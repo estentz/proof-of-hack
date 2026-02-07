@@ -37,4 +37,10 @@ pub enum ProofOfHackError {
 
     #[msg("Plaintext proof exceeds maximum size of 1024 bytes")]
     PlaintextProofTooLarge,
+
+    #[msg("Grace period exceeds maximum of 1 year")]
+    GracePeriodTooLong,
+
+    #[msg("Grace period calculation overflow")]
+    GracePeriodOverflow,
 }

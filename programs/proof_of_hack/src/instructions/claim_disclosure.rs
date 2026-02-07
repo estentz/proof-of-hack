@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use crate::state::{Protocol, Disclosure};
+use crate::state::{Protocol, Disclosure, disclosure_status};
 use crate::errors::ProofOfHackError;
 
 #[derive(Accounts)]
@@ -8,6 +8,7 @@ pub struct ClaimDisclosure<'info> {
         mut,
         constraint = disclosure.target_program == protocol.program_address @ ProofOfHackError::ProtocolMismatch,
         constraint = disclosure.protocol == Pubkey::default() @ ProofOfHackError::AlreadyClaimed,
+        constraint = disclosure.status == disclosure_status::SUBMITTED @ ProofOfHackError::InvalidStatus,
     )]
     pub disclosure: Account<'info, Disclosure>,
 

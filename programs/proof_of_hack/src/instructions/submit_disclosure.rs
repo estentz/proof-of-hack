@@ -3,6 +3,7 @@ use crate::state::{Disclosure, disclosure_status, severity};
 use crate::errors::ProofOfHackError;
 
 pub const MIN_GRACE_PERIOD: i64 = 60; // 60 seconds minimum (for demo)
+pub const MAX_GRACE_PERIOD: i64 = 31_536_000; // 1 year maximum
 pub const DEFAULT_GRACE_PERIOD: i64 = 604800; // 7 days
 pub const MAX_ENCRYPTED_PROOF: usize = 1024;
 
@@ -52,6 +53,10 @@ pub fn handler(
     require!(
         grace_period >= MIN_GRACE_PERIOD,
         ProofOfHackError::GracePeriodTooShort
+    );
+    require!(
+        grace_period <= MAX_GRACE_PERIOD,
+        ProofOfHackError::GracePeriodTooLong
     );
     require!(
         encrypted_proof.len() <= MAX_ENCRYPTED_PROOF,

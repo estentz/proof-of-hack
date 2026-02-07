@@ -47,7 +47,6 @@ export default function RegisterPage() {
         .rpc();
 
       setTxSig(sig);
-      setStatus("Protocol registered successfully!");
 
       const keypairData = {
         publicKey: Array.from(encryptionKeypair.publicKey),
@@ -58,6 +57,10 @@ export default function RegisterPage() {
       const stored = JSON.parse(localStorage.getItem("poh_encryption_keys") || "[]");
       stored.push(keypairData);
       localStorage.setItem("poh_encryption_keys", JSON.stringify(stored));
+
+      setStatus(
+        "Protocol registered! Encryption keys saved to browser storage. Back them up — clearing browser data will lose decryption ability."
+      );
     } catch (err: any) {
       setError(err.message || "Failed to register protocol");
       setStatus(null);
@@ -108,6 +111,24 @@ export default function RegisterPage() {
         >
           {!publicKey ? "Connect Wallet First" : "Register Protocol"}
         </button>
+
+        {txSig && (
+          <button
+            onClick={() => {
+              const keys = localStorage.getItem("poh_encryption_keys") || "[]";
+              const blob = new Blob([keys], { type: "application/json" });
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = "poh-encryption-keys.json";
+              a.click();
+              URL.revokeObjectURL(url);
+            }}
+            className="w-full bg-yellow-600 hover:bg-yellow-700 text-white py-2 rounded-lg text-sm font-medium transition"
+          >
+            Download Encryption Keys (Back Up!)
+          </button>
+        )}
 
         {status && (
           <div className="bg-green-900/30 border border-green-800 rounded-lg p-4 text-green-400">

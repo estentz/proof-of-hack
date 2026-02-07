@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
-import { Connection } from "@solana/web3.js";
-import { AnchorProvider, Program } from "@coral-xyz/anchor";
+import { Connection, Keypair } from "@solana/web3.js";
+import { AnchorProvider, Program, Wallet } from "@coral-xyz/anchor";
 import idl from "@/lib/idl.json";
-
-const RPC = "https://api.devnet.solana.com";
+import { RPC_ENDPOINT } from "@/lib/constants";
 
 function getReadonlyProgram() {
-  const connection = new Connection(RPC, "confirmed");
-  const provider = AnchorProvider.local(RPC, { commitment: "confirmed" });
+  const connection = new Connection(RPC_ENDPOINT, "confirmed");
+  const dummyWallet = new Wallet(Keypair.generate());
+  const provider = new AnchorProvider(connection, dummyWallet, {
+    commitment: "confirmed",
+  });
   return new Program(idl as any, provider);
 }
 
@@ -30,8 +32,9 @@ export async function GET() {
       protocols: entries,
     });
   } catch (err: any) {
+    console.error("Protocols API error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to fetch protocols" },
+      { error: "Failed to fetch protocols" },
       { status: 500 }
     );
   }

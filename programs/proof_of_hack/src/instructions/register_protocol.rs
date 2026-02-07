@@ -30,6 +30,11 @@ pub fn handler(
         !name.is_empty() && name.len() <= 64,
         ProofOfHackError::InvalidProtocolName
     );
+    // Only allow printable ASCII to prevent homoglyph impersonation
+    require!(
+        name.bytes().all(|b| b >= 0x20 && b <= 0x7E),
+        ProofOfHackError::InvalidProtocolName
+    );
 
     let protocol = &mut ctx.accounts.protocol;
     protocol.authority = ctx.accounts.authority.key();

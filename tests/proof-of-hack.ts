@@ -734,6 +734,113 @@ describe("proof-of-hack", () => {
     });
   });
 
+  describe("security: grace period bounds", () => {
+    it("rejects grace period exceeding 1 year", async () => {
+      const nonce12 = new anchor.BN(600);
+      const [discPda12] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("disclosure"),
+          hacker.publicKey.toBuffer(),
+          targetProgram.publicKey.toBuffer(),
+          nonce12.toArrayLike(Buffer, "le", 8),
+        ],
+        program.programId
+      );
+
+      try {
+        await program.methods
+          .submitDisclosure(
+            Array.from(proofHash),
+            Buffer.from([]),
+            severity,
+            new anchor.BN(31_536_001), // 1 year + 1 second
+            nonce12
+          )
+          .accounts({
+            disclosure: discPda12,
+            hacker: hacker.publicKey,
+            targetProgram: targetProgram.publicKey,
+            protocol: PublicKey.default,
+            systemProgram: SystemProgram.programId,
+          })
+          .signers([hacker])
+          .rpc();
+        assert.fail("Should have thrown error");
+      } catch (err) {
+        assert.include(err.toString(), "GracePeriodTooLong");
+      }
+    });
+  });
+
+  describe("security: reveal from acknowledged status", () => {
+    it("allows reveal from ACKNOWLEDGED status after grace period", async () => {
+      // Create disclosure with short grace period
+      const nonce13 = new anchor.BN(700);
+      const revealProof2 = "Acknowledged reveal test: overflow in mint";
+      const revealHash2 = crypto.createHash("sha256").update(revealProof2).digest();
+
+      const [discPda13] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("disclosure"),
+          hacker.publicKey.toBuffer(),
+          targetProgram.publicKey.toBuffer(),
+          nonce13.toArrayLike(Buffer, "le", 8),
+        ],
+        program.programId
+      );
+
+      await program.methods
+        .submitDisclosure(
+          Array.from(revealHash2),
+          Buffer.from([]),
+          severity,
+          new anchor.BN(60),
+          nonce13
+        )
+        .accounts({
+          disclosure: discPda13,
+          hacker: hacker.publicKey,
+          targetProgram: targetProgram.publicKey,
+          protocol: protocolPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([hacker])
+        .rpc();
+
+      // Protocol acknowledges
+      await program.methods
+        .acknowledgeDisclosure()
+        .accounts({
+          disclosure: discPda13,
+          protocol: protocolPda,
+          authority: protocolAuthority.publicKey,
+        })
+        .signers([protocolAuthority])
+        .rpc();
+
+      const disc = await program.account.disclosure.fetch(discPda13);
+      assert.equal(disc.status, 1); // Acknowledged
+
+      // Attempt reveal from acknowledged state (may fail due to grace period timing)
+      try {
+        await program.methods
+          .revealProof(Buffer.from(revealProof2))
+          .accounts({
+            disclosure: discPda13,
+            hacker: hacker.publicKey,
+          })
+          .signers([hacker])
+          .rpc();
+        // Success means reveal from ACKNOWLEDGED works (grace period already elapsed)
+        const revealed = await program.account.disclosure.fetch(discPda13);
+        assert.equal(revealed.status, 3); // Revealed
+      } catch (err) {
+        // GracePeriodNotElapsed is acceptable — the important thing is it didn't reject with InvalidStatus
+        assert.include(err.toString(), "GracePeriodNotElapsed");
+      }
+    });
+  });
+
   describe("full flow: register → submit → acknowledge → resolve", () => {
     it("completes the happy path", async () => {
       const newTarget = Keypair.generate();

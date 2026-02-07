@@ -10,7 +10,9 @@ pub struct RevealProof<'info> {
     #[account(
         mut,
         constraint = disclosure.hacker == hacker.key() @ ProofOfHackError::UnauthorizedHackerAction,
-        constraint = disclosure.status == disclosure_status::SUBMITTED @ ProofOfHackError::InvalidStatus,
+        constraint = (disclosure.status == disclosure_status::SUBMITTED
+            || disclosure.status == disclosure_status::ACKNOWLEDGED)
+            @ ProofOfHackError::InvalidStatus,
     )]
     pub disclosure: Account<'info, Disclosure>,
 
@@ -25,10 +27,13 @@ pub fn handler(ctx: Context<RevealProof>, plaintext_proof: Vec<u8>) -> Result<()
         ProofOfHackError::PlaintextProofTooLarge
     );
 
-    // Check grace period has elapsed
+    // Check grace period has elapsed (use checked_add to prevent overflow)
     let now = Clock::get()?.unix_timestamp;
+    let deadline = disclosure.submitted_at
+        .checked_add(disclosure.grace_period)
+        .ok_or(ProofOfHackError::GracePeriodOverflow)?;
     require!(
-        now >= disclosure.submitted_at + disclosure.grace_period,
+        now >= deadline,
         ProofOfHackError::GracePeriodNotElapsed
     );
 

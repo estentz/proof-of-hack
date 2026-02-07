@@ -401,6 +401,16 @@
       "code": 6011,
       "name": "PlaintextProofTooLarge",
       "msg": "Plaintext proof exceeds maximum size of 1024 bytes"
+    },
+    {
+      "code": 6012,
+      "name": "GracePeriodTooLong",
+      "msg": "Grace period exceeds maximum of 1 year"
+    },
+    {
+      "code": 6013,
+      "name": "GracePeriodOverflow",
+      "msg": "Grace period calculation overflow"
     }
   ],
   "types": [

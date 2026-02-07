@@ -1,25 +1,59 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Connection, PublicKey } from "@solana/web3.js";
-import { AnchorProvider, Program } from "@coral-xyz/anchor";
+import { Connection, Keypair, PublicKey } from "@solana/web3.js";
+import { AnchorProvider, Program, Wallet } from "@coral-xyz/anchor";
 import idl from "@/lib/idl.json";
-
-const RPC = "https://api.devnet.solana.com";
+import { RPC_ENDPOINT } from "@/lib/constants";
 
 function getReadonlyProgram() {
-  const connection = new Connection(RPC, "confirmed");
-  const provider = AnchorProvider.local(RPC, { commitment: "confirmed" });
+  const connection = new Connection(RPC_ENDPOINT, "confirmed");
+  // Dummy wallet for read-only operations — never signs transactions
+  const dummyWallet = new Wallet(Keypair.generate());
+  const provider = new AnchorProvider(connection, dummyWallet, {
+    commitment: "confirmed",
+  });
   return new Program(idl as any, provider);
+}
+
+// Validate base58 Solana address format
+function isValidBase58(value: string): boolean {
+  return /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const program = getReadonlyProgram();
     const { searchParams } = new URL(request.url);
     const hacker = searchParams.get("hacker");
     const protocol = searchParams.get("protocol");
     const status = searchParams.get("status");
     const target = searchParams.get("target");
 
+    // Validate parameters
+    if (hacker && !isValidBase58(hacker)) {
+      return NextResponse.json(
+        { error: "Invalid hacker address format" },
+        { status: 400 }
+      );
+    }
+    if (protocol && !isValidBase58(protocol)) {
+      return NextResponse.json(
+        { error: "Invalid protocol address format" },
+        { status: 400 }
+      );
+    }
+    if (target && !isValidBase58(target)) {
+      return NextResponse.json(
+        { error: "Invalid target address format" },
+        { status: 400 }
+      );
+    }
+    if (status && (isNaN(Number(status)) || Number(status) < 0 || Number(status) > 3)) {
+      return NextResponse.json(
+        { error: "Status must be 0 (Submitted), 1 (Acknowledged), 2 (Resolved), or 3 (Revealed)" },
+        { status: 400 }
+      );
+    }
+
+    const program = getReadonlyProgram();
     const allDisclosures = await (program.account as any).disclosure.all();
 
     let entries = allDisclosures.map((d: any) => ({
@@ -50,8 +84,9 @@ export async function GET(request: NextRequest) {
       disclosures: entries,
     });
   } catch (err: any) {
+    console.error("Disclosures API error:", err);
     return NextResponse.json(
-      { error: err.message || "Failed to fetch disclosures" },
+      { error: "Failed to fetch disclosures" },
       { status: 500 }
     );
   }
