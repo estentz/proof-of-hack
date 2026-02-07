@@ -1,0 +1,86 @@
+{
+  "name": "Proof of Hack",
+  "version": "1.0.0",
+  "description": "Trustless responsible disclosure with on-chain proof and accountability on Solana. White hats hash exploit proof, protocols verify privately, both sides get cryptographic accountability.",
+  "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn",
+  "network": "devnet",
+  "repo": "https://github.com/estentz/proof-of-hack",
+  "sdk": "@proof-of-hack/sdk",
+  "instructions": [
+    {
+      "name": "register_protocol",
+      "description": "Register a program to receive encrypted vulnerability disclosures",
+      "signer": "protocol_authority",
+      "params": [
+        { "name": "program_address", "type": "PublicKey", "description": "Solana program to protect" },
+        { "name": "name", "type": "String", "description": "Protocol name (1-64 chars)" },
+        { "name": "encryption_key", "type": "[u8; 32]", "description": "X25519 public key" }
+      ],
+      "pda": { "seeds": ["protocol", "program_address"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
+    },
+    {
+      "name": "submit_disclosure",
+      "description": "Submit a vulnerability disclosure with SHA-256 proof commitment",
+      "signer": "hacker",
+      "params": [
+        { "name": "proof_hash", "type": "[u8; 32]", "description": "SHA-256 hash of proof" },
+        { "name": "encrypted_proof", "type": "Vec<u8>", "description": "NaCl encrypted proof (max 1024 bytes)" },
+        { "name": "severity", "type": "u8", "description": "1=Low, 2=Medium, 3=High, 4=Critical" },
+        { "name": "grace_period", "type": "i64", "description": "Seconds before reveal allowed (min 60)" },
+        { "name": "nonce", "type": "u64", "description": "Unique per hacker+program pair" }
+      ],
+      "pda": { "seeds": ["disclosure", "hacker", "target_program", "nonce_le_bytes"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
+    },
+    {
+      "name": "acknowledge_disclosure",
+      "description": "Protocol acknowledges receipt of vulnerability report",
+      "signer": "protocol_authority",
+      "constraint": "status == SUBMITTED (0)"
+    },
+    {
+      "name": "resolve_disclosure",
+      "description": "Protocol marks vulnerability as resolved with payment proof",
+      "signer": "protocol_authority",
+      "params": [
+        { "name": "payment_hash", "type": "[u8; 32]", "description": "SHA-256 hash of payment proof" }
+      ],
+      "constraint": "status == ACKNOWLEDGED (1)"
+    },
+    {
+      "name": "reveal_proof",
+      "description": "Hacker reveals proof publicly after grace period (nuclear option)",
+      "signer": "hacker",
+      "params": [
+        { "name": "plaintext_proof", "type": "Vec<u8>", "description": "Original proof (max 1024 bytes)" }
+      ],
+      "constraint": "status == SUBMITTED (0), grace_period elapsed, SHA-256 matches"
+    },
+    {
+      "name": "claim_disclosure",
+      "description": "Protocol claims unclaimed disclosure after late registration",
+      "signer": "protocol_authority",
+      "constraint": "target_program matches, protocol field is default"
+    }
+  ],
+  "statusCodes": {
+    "0": "SUBMITTED",
+    "1": "ACKNOWLEDGED",
+    "2": "RESOLVED",
+    "3": "REVEALED"
+  },
+  "severityCodes": {
+    "1": "LOW",
+    "2": "MEDIUM",
+    "3": "HIGH",
+    "4": "CRITICAL"
+  },
+  "encryption": {
+    "algorithm": "NaCl box (X25519-XSalsa20-Poly1305)",
+    "format": "[24-byte nonce][32-byte sender pubkey][ciphertext]",
+    "clientSideOnly": true
+  },
+  "api": {
+    "disclosures": "GET /api/disclosures",
+    "protocols": "GET /api/protocols"
+  }
+}
