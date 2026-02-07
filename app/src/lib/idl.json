@@ -1,0 +1,585 @@
+{
+  "address": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn",
+  "metadata": {
+    "name": "proof_of_hack",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Verifiable white hat disclosure registry on Solana"
+  },
+  "instructions": [
+    {
+      "name": "acknowledge_disclosure",
+      "docs": [
+        "Protocol acknowledges receipt of the disclosure."
+      ],
+      "discriminator": [
+        126,
+        214,
+        5,
+        53,
+        52,
+        41,
+        199,
+        45
+      ],
+      "accounts": [
+        {
+          "name": "disclosure",
+          "writable": true
+        },
+        {
+          "name": "protocol"
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "claim_disclosure",
+      "docs": [
+        "Protocol claims an existing disclosure after registering."
+      ],
+      "discriminator": [
+        58,
+        9,
+        130,
+        30,
+        132,
+        126,
+        220,
+        120
+      ],
+      "accounts": [
+        {
+          "name": "disclosure",
+          "writable": true
+        },
+        {
+          "name": "protocol"
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "register_protocol",
+      "docs": [
+        "Register a protocol with its encryption public key.",
+        "Anyone can register; the signer becomes the authority."
+      ],
+      "discriminator": [
+        63,
+        107,
+        156,
+        136,
+        249,
+        231,
+        183,
+        65
+      ],
+      "accounts": [
+        {
+          "name": "protocol",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "program_address"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "program_address",
+          "type": "pubkey"
+        },
+        {
+          "name": "name",
+          "type": "string"
+        },
+        {
+          "name": "encryption_key",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "resolve_disclosure",
+      "docs": [
+        "Protocol resolves the disclosure and records payment proof."
+      ],
+      "discriminator": [
+        161,
+        0,
+        242,
+        209,
+        109,
+        32,
+        247,
+        58
+      ],
+      "accounts": [
+        {
+          "name": "disclosure",
+          "writable": true
+        },
+        {
+          "name": "protocol"
+        },
+        {
+          "name": "authority",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "payment_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "reveal_proof",
+      "docs": [
+        "Hacker reveals proof publicly after grace period (nuclear option)."
+      ],
+      "discriminator": [
+        252,
+        131,
+        138,
+        248,
+        210,
+        240,
+        176,
+        103
+      ],
+      "accounts": [
+        {
+          "name": "disclosure",
+          "writable": true
+        },
+        {
+          "name": "hacker",
+          "signer": true
+        }
+      ],
+      "args": [
+        {
+          "name": "plaintext_proof",
+          "type": "bytes"
+        }
+      ]
+    },
+    {
+      "name": "submit_disclosure",
+      "docs": [
+        "Submit a vulnerability disclosure with proof hash and optional encrypted proof."
+      ],
+      "discriminator": [
+        182,
+        3,
+        224,
+        182,
+        159,
+        154,
+        78,
+        228
+      ],
+      "accounts": [
+        {
+          "name": "disclosure",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  100,
+                  105,
+                  115,
+                  99,
+                  108,
+                  111,
+                  115,
+                  117,
+                  114,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "hacker"
+              },
+              {
+                "kind": "account",
+                "path": "target_program"
+              },
+              {
+                "kind": "arg",
+                "path": "nonce"
+              }
+            ]
+          }
+        },
+        {
+          "name": "hacker",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "target_program",
+          "docs": [
+            "It's used only as a PDA seed and stored as a reference."
+          ]
+        },
+        {
+          "name": "protocol",
+          "docs": [
+            "If Pubkey::default(), disclosure targets an unregistered protocol."
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "proof_hash",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "encrypted_proof",
+          "type": "bytes"
+        },
+        {
+          "name": "severity",
+          "type": "u8"
+        },
+        {
+          "name": "grace_period",
+          "type": "i64"
+        },
+        {
+          "name": "nonce",
+          "type": "u64"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Disclosure",
+      "discriminator": [
+        29,
+        165,
+        1,
+        230,
+        237,
+        219,
+        131,
+        139
+      ]
+    },
+    {
+      "name": "Protocol",
+      "discriminator": [
+        45,
+        39,
+        101,
+        43,
+        115,
+        72,
+        131,
+        40
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidProtocolName",
+      "msg": "Protocol name must be between 1 and 64 characters"
+    },
+    {
+      "code": 6001,
+      "name": "InvalidSeverity",
+      "msg": "Severity must be between 1 (Low) and 4 (Critical)"
+    },
+    {
+      "code": 6002,
+      "name": "GracePeriodTooShort",
+      "msg": "Grace period must be at least 60 seconds"
+    },
+    {
+      "code": 6003,
+      "name": "EncryptedProofTooLarge",
+      "msg": "Encrypted proof exceeds maximum size of 1024 bytes"
+    },
+    {
+      "code": 6004,
+      "name": "InvalidStatus",
+      "msg": "Disclosure is not in the expected status for this action"
+    },
+    {
+      "code": 6005,
+      "name": "GracePeriodNotElapsed",
+      "msg": "Grace period has not elapsed yet"
+    },
+    {
+      "code": 6006,
+      "name": "ProofHashMismatch",
+      "msg": "Proof hash does not match the committed hash"
+    },
+    {
+      "code": 6007,
+      "name": "UnauthorizedProtocolAction",
+      "msg": "Only the protocol authority can perform this action"
+    },
+    {
+      "code": 6008,
+      "name": "UnauthorizedHackerAction",
+      "msg": "Only the original hacker can perform this action"
+    },
+    {
+      "code": 6009,
+      "name": "ProtocolMismatch",
+      "msg": "Protocol does not match the disclosure's target program"
+    },
+    {
+      "code": 6010,
+      "name": "AlreadyClaimed",
+      "msg": "Disclosure already claimed by a protocol"
+    },
+    {
+      "code": 6011,
+      "name": "PlaintextProofTooLarge",
+      "msg": "Plaintext proof exceeds maximum size of 1024 bytes"
+    }
+  ],
+  "types": [
+    {
+      "name": "Disclosure",
+      "docs": [
+        "Vulnerability disclosure — the core record"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "hacker",
+            "docs": [
+              "Who found the bug"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "protocol",
+            "docs": [
+              "Protocol PDA (or Pubkey::default() if unregistered)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "target_program",
+            "docs": [
+              "The actual program with the vulnerability"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "proof_hash",
+            "docs": [
+              "SHA-256 of plaintext proof (commitment)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "encrypted_proof",
+            "docs": [
+              "NaCl box encrypted, max 1024 bytes"
+            ],
+            "type": "bytes"
+          },
+          {
+            "name": "severity",
+            "docs": [
+              "1=Low, 2=Medium, 3=High, 4=Critical"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "status",
+            "docs": [
+              "0=Submitted, 1=Acknowledged, 2=Resolved, 3=Revealed"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "payment_hash",
+            "docs": [
+              "Hash of bounty payment tx (set on resolve)"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "submitted_at",
+            "docs": [
+              "When the disclosure was submitted"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "acknowledged_at",
+            "docs": [
+              "When the disclosure was acknowledged"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "resolved_at",
+            "docs": [
+              "When the disclosure was resolved"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "grace_period",
+            "docs": [
+              "Seconds before reveal is allowed (default 7 days, min 60s for demo)"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "nonce",
+            "docs": [
+              "Unique per hacker+protocol pair"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Protocol",
+      "docs": [
+        "Protocol registration — teams register their programs"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Who controls this protocol entry"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "program_address",
+            "docs": [
+              "The program being protected"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "name",
+            "docs": [
+              "Protocol name (max 64 chars)"
+            ],
+            "type": "string"
+          },
+          {
+            "name": "encryption_key",
+            "docs": [
+              "X25519 public key for encrypted disclosures"
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "registered_at",
+            "docs": [
+              "When the protocol was registered"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    }
+  ]
+}
