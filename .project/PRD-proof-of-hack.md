@@ -1,10 +1,11 @@
 # PRD: Proof of Hack
 ## Verifiable White Hat Disclosure Registry on Solana
 
-**Status:** DRAFT
+**Status:** SIGNED OFF
 **Author:** AEGIS (Claude) — Colosseum Agent Hackathon Entry
 **Created:** 2026-02-06
-**Deadline:** 2026-02-12 12:00 PM EST (6 days)
+**Deadline:** 2026-02-12 12:00 PM EST (5 days remaining)
+**Reviewed:** 2026-02-07 — Fixed compatibility, encryption, and sizing issues
 
 ---
 
@@ -26,174 +27,200 @@ White hat hackers discover vulnerabilities in DeFi protocols but have no trustle
 
 ---
 
-## What We're Building (MVP — 6 days)
+## What We're Building (MVP)
 
-### 1. Solana Program (Anchor/Rust)
+### 1. Solana Program (Anchor 0.32.1 / Rust)
 
-**Accounts & Instructions:**
+**Accounts:**
 
-- **`register_protocol`** — Protocol team registers their program address + authority wallet
-  - Creates a Protocol PDA with: name, program_address, authority, bounty_contact_hash, registered_at
+```rust
+// Protocol registration — teams register their programs
+Protocol {
+    authority: Pubkey,       // Who controls this protocol entry
+    program_address: Pubkey, // The program being protected
+    name: String,            // Max 64 chars
+    encryption_key: [u8; 32],// X25519 public key for encrypted disclosures
+    registered_at: i64,
+    bump: u8,
+}
 
-- **`submit_disclosure`** — White hat submits encrypted vulnerability proof
-  - Creates a Disclosure PDA with: hacker_pubkey, protocol (or unregistered program address), proof_hash (SHA-256 of exploit details), encrypted_proof (encrypted with protocol's pubkey), severity, status, submitted_at
-  - If protocol not registered, disclosure still gets timestamped on-chain
+// Vulnerability disclosure — the core record
+Disclosure {
+    hacker: Pubkey,              // Who found the bug
+    protocol: Pubkey,            // Protocol PDA (or Pubkey::default() if unregistered)
+    target_program: Pubkey,      // The actual program with the vulnerability
+    proof_hash: [u8; 32],        // SHA-256 of plaintext proof (commitment)
+    encrypted_proof: Vec<u8>,    // NaCl box encrypted, max 1024 bytes
+    severity: u8,                // 1=Low, 2=Medium, 3=High, 4=Critical
+    status: u8,                  // 0=Submitted, 1=Acknowledged, 2=Resolved, 3=Revealed
+    payment_hash: [u8; 32],      // Hash of bounty payment tx (set on resolve)
+    submitted_at: i64,
+    acknowledged_at: i64,
+    resolved_at: i64,
+    grace_period: i64,           // Seconds before reveal is allowed (default 7 days, min 60s for demo)
+    nonce: u64,                  // Unique per hacker+protocol pair
+    bump: u8,
+}
+```
 
-- **`acknowledge_disclosure`** — Protocol acknowledges receipt (changes status)
-  - Only protocol authority can call
-  - Status: Submitted → Acknowledged
+**Instructions (6 total):**
 
-- **`resolve_disclosure`** — Protocol marks as resolved + records payment hash
-  - Status: Acknowledged → Resolved
-  - Records payment_hash (proof of bounty payment)
+1. **`register_protocol`** — Protocol team registers their program + encryption pubkey
+   - Seeds: `[b"protocol", program_address]`
+   - Anyone can register, authority controls updates
 
-- **`reveal_proof`** — White hat reveals proof publicly (nuclear option)
-  - Only callable after configurable grace period (e.g., 30 days)
-  - Only if status is still Submitted (protocol never acknowledged)
-  - Stores plaintext proof on-chain permanently
+2. **`submit_disclosure`** — White hat submits vulnerability proof
+   - Seeds: `[b"disclosure", hacker, target_program, nonce.to_le_bytes()]`
+   - Stores proof_hash (SHA-256 commitment) + encrypted_proof (NaCl box)
+   - Works whether protocol is registered or not
+   - If protocol registered: encrypt with protocol's encryption_key
+   - If NOT registered: store proof_hash only, encrypted_proof = empty (hacker keeps encrypted copy locally, sends when protocol registers)
+   - Grace period is hacker-configurable (min 60 seconds for demo, default 604800 = 7 days)
 
-- **`post_bounty`** — White hat creates a bounty for an unregistered protocol
-  - "I found something in program X, here's the hash, waiting for team to register"
-  - Protocol can later register and claim the disclosure
+3. **`acknowledge_disclosure`** — Protocol acknowledges receipt
+   - Only protocol authority can call
+   - Status: Submitted(0) → Acknowledged(1)
+   - Records acknowledged_at timestamp
 
-**PDA Structure:**
+4. **`resolve_disclosure`** — Protocol marks resolved + records payment proof
+   - Only protocol authority can call
+   - Status: Acknowledged(1) → Resolved(2)
+   - Records payment_hash and resolved_at
+
+5. **`reveal_proof`** — White hat reveals proof publicly (nuclear option)
+   - Only hacker who submitted can call
+   - Only if: current_time > submitted_at + grace_period
+   - Only if status is Submitted(0) — protocol never acknowledged
+   - Hacker provides plaintext proof, program verifies SHA-256 matches proof_hash
+   - Status: Submitted(0) → Revealed(3)
+   - Plaintext stored on-chain permanently
+
+6. **`claim_disclosure`** — Protocol claims an existing disclosure after registering
+   - Protocol registers, then calls this to link to a disclosure targeting their program
+   - Hacker can then re-encrypt proof with protocol's encryption_key
+   - Enables the "unregistered protocol" flow
+
+**PDA Seeds:**
 ```
 Protocol:    [b"protocol", program_address]
-Disclosure:  [b"disclosure", hacker_pubkey, protocol_pda, nonce]
-Bounty:      [b"bounty", hacker_pubkey, target_program, nonce]
+Disclosure:  [b"disclosure", hacker_pubkey, target_program, nonce_bytes]
 ```
 
-### 2. TypeScript SDK / CLI
+**Account Sizes:**
+- Protocol: 8 (discriminator) + 32 + 32 + 64 + 4 + 32 + 8 + 1 = ~181 bytes
+- Disclosure: 8 + 32 + 32 + 32 + 32 + (4 + 1024) + 1 + 1 + 32 + 8 + 8 + 8 + 8 + 8 + 1 = ~1239 bytes
 
-- `poh register-protocol` — Register a protocol
-- `poh submit` — Submit a disclosure (encrypts + hashes + sends tx)
-- `poh acknowledge <disclosure_id>` — Protocol acknowledges
-- `poh resolve <disclosure_id> --payment-hash <hash>` — Mark resolved
-- `poh reveal <disclosure_id>` — Reveal proof (nuclear option)
-- `poh list` — List disclosures for a protocol or hacker
-- `poh status` — Check status of a disclosure
+### 2. TypeScript SDK
 
-### 3. Web Frontend (Security-First)
+Library + CLI wrapping all program instructions:
 
-- Simple, clean UI for the demo
-- Wallet connection (Phantom/Solflare)
-- Protocol registration form
-- Disclosure submission form (client-side encryption before tx)
-- Dashboard showing disclosure statuses
-- **No server-side storage** — everything on-chain or client-side
-- Framework: Next.js with CSP headers, no external scripts
+```typescript
+// Library API
+const poh = new ProofOfHack(connection, wallet);
+await poh.registerProtocol(programAddress, name, encryptionKey);
+await poh.submitDisclosure(targetProgram, proof, severity, gracePeriod);
+await poh.acknowledgeDisclosure(disclosurePda);
+await poh.resolveDisclosure(disclosurePda, paymentHash);
+await poh.revealProof(disclosurePda, plaintextProof);
+await poh.claimDisclosure(disclosurePda);
 
-### 4. Marketing & Community
+// CLI
+poh register-protocol --program <addr> --name <name>
+poh submit --target <program> --proof <file> --severity <1-4>
+poh acknowledge --disclosure <pda>
+poh resolve --disclosure <pda> --payment-hash <hash>
+poh reveal --disclosure <pda> --proof <file>
+poh list --protocol <addr> | --hacker <addr>
+```
 
-- Forum posts on Colosseum (progress updates, team formation)
-- Agent-to-agent engagement (basedmereum and others)
-- Heartbeat sync every 30 minutes during active development
-- Progress threads showing development milestones
+### 3. Web Frontend
+
+- **Framework:** Next.js 14 (App Router) — security-first, static export
+- **Wallet:** @solana/wallet-adapter (Phantom, Solflare, Backpack)
+- **Pages:**
+  - `/` — Landing with protocol explanation
+  - `/register` — Protocol registration form
+  - `/submit` — Disclosure submission (client-side encryption)
+  - `/dashboard` — List all disclosures (filtered by wallet)
+  - `/disclosure/[id]` — Individual disclosure status + actions
+- **Security:** CSP headers, no external scripts, no server-side storage
+- **Network:** Devnet for hackathon, network switcher for mainnet-ready
+
+### 4. Marketing & Community (separate directory)
+
+- Colosseum forum posts (every 1-2 days)
+- Agent-to-agent engagement on forum
+- Heartbeat sync
+- Demo video of full flow
 
 ---
 
 ## What We're NOT Building (MVP)
 
-1. ~~Escrow system~~ — stretch goal, potentially via ShadowPay integration
-2. ~~Private payment rails~~ — stretch goal, Radr/ShadowPay or Confidential Transfers
-3. ~~Automated vulnerability scanning~~ — the agent submits, not scans
-4. ~~Reputation/scoring system~~ — v2
-5. ~~Multi-sig protocol authorities~~ — single authority for MVP
-6. ~~Cross-chain support~~ — Solana only
-7. ~~Mobile app~~ — web only
+1. Escrow system (stretch: ShadowPay)
+2. Private payment rails (stretch: Radr/ShadowPay)
+3. Automated vulnerability scanning
+4. Reputation/scoring system
+5. Multi-sig protocol authorities
+6. Cross-chain support
+7. Mobile app
 
 ---
 
-## Stretch Goals (if time permits)
+## Stretch Goals
 
 1. **ShadowPay Integration** — Private bounty payments via `@shadowpay/server`
-   - Protocol posts hash of payment proof
-   - Hacker receives funds privately
-   - Both sides have on-chain proof, no public amount disclosure
-
-2. **Protocol Proof of Funds** — Protocol can hash proof they have bounty funds allocated
-   - Builds trust with white hats before they disclose
-
-3. **Severity Voting** — Community can vote on disclosure severity after reveal
-
-4. **SOLPRISM Integration** — Commit reasoning on-chain for transparency
-
----
-
-## Technical Architecture
-
-```
-┌─────────────────────────────────────────────────┐
-│                  Web Frontend                     │
-│              (Next.js + Wallet Adapter)           │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │
-│  │ Register  │  │ Submit   │  │  Dashboard   │   │
-│  │ Protocol  │  │Disclosure│  │  (Status)    │   │
-│  └────┬─────┘  └────┬─────┘  └──────┬───────┘   │
-└───────┼──────────────┼───────────────┼───────────┘
-        │              │               │
-        ▼              ▼               ▼
-┌─────────────────────────────────────────────────┐
-│              TypeScript SDK / CLI                 │
-│  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │
-│  │ Encrypt  │  │  Hash    │  │   Sign TX    │   │
-│  │  (NaCl)  │  │ (SHA256) │  │  (Wallet)    │   │
-│  └──────────┘  └──────────┘  └──────────────┘   │
-└──────────────────────┬──────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────┐
-│           Solana Program (Anchor/Rust)            │
-│                                                   │
-│  Protocol PDA    Disclosure PDA    Bounty PDA     │
-│  ┌───────────┐  ┌─────────────┐  ┌───────────┐   │
-│  │ authority │  │ proof_hash  │  │ target_pgm│   │
-│  │ pgm_addr  │  │ enc_proof   │  │ hacker    │   │
-│  │ name      │  │ hacker      │  │ proof_hash│   │
-│  │ timestamp │  │ severity    │  │ timestamp │   │
-│  └───────────┘  │ status      │  └───────────┘   │
-│                  │ timestamp   │                   │
-│                  └─────────────┘                   │
-└─────────────────────────────────────────────────┘
-```
+2. **Protocol Proof of Funds** — Hash proof of allocated bounty funds
+3. **Severity Voting** — Community votes on disclosure severity after reveal
+4. **SOLPRISM Integration** — On-chain reasoning commitment
 
 ---
 
 ## Encryption Scheme
 
-- **Proof hashing:** SHA-256 of the vulnerability details (description + PoC code + affected address)
-- **Proof encryption:** NaCl box (X25519-XSalsa20-Poly1305)
-  - Hacker encrypts with protocol's public key
-  - Only protocol's private key can decrypt
-  - If protocol hasn't registered, proof is encrypted with a derived key from the target program address
-- **Payment proof:** SHA-256 of transaction signature + amount + timestamp
+- **Proof hashing:** SHA-256(description + PoC + affected_address)
+  - This is the commitment — goes on-chain immediately
+  - Verifiable later: anyone can hash the revealed proof and check it matches
+
+- **Proof encryption (registered protocol):** NaCl box (X25519-XSalsa20-Poly1305)
+  - Hacker encrypts with protocol's X25519 public key
+  - Only protocol's corresponding private key can decrypt
+  - Encrypted proof stored on-chain (max 1024 bytes)
+  - For larger proofs: store encrypted proof off-chain, put hash on-chain
+
+- **Proof encryption (unregistered protocol):**
+  - Only proof_hash goes on-chain (no encrypted_proof)
+  - Hacker stores encrypted proof locally
+  - When protocol registers + provides encryption key → hacker calls update to add encrypted_proof
+
+- **Payment proof:** SHA-256(tx_signature + amount + timestamp)
 
 ---
 
-## Build Schedule (6 days)
+## Build Schedule
 
 | Day | Date | Focus | Deliverable |
 |-----|------|-------|-------------|
-| 1 | Feb 6 (Thu) | Anchor program | Core instructions: register, submit, acknowledge, resolve, reveal |
-| 2 | Feb 7 (Fri) | Anchor program + tests | Bounty instruction, all program tests passing on devnet |
-| 3 | Feb 8 (Sat) | TypeScript SDK | CLI tool, encryption, hashing, all instructions wrapped |
-| 4 | Feb 9 (Sun) | Web frontend | Next.js app, wallet integration, all forms working |
-| 5 | Feb 10 (Mon) | Integration + polish | E2E flow working, demo video, stretch goals if time |
-| 6 | Feb 11 (Tue) | Submit + marketing | Final testing, submission, forum posts, community engagement |
-
-**Submission deadline:** Feb 12, 12:00 PM EST
+| 1 | Feb 7 (Fri) | Anchor program | All 6 instructions compiling, basic tests |
+| 2 | Feb 8 (Sat) | Tests + deploy | Full test suite, deploy to devnet |
+| 3 | Feb 9 (Sun) | TypeScript SDK | Library + CLI, encryption, all instructions |
+| 4 | Feb 10 (Mon) | Web frontend | Next.js, wallet, all pages working |
+| 5 | Feb 11 (Tue) | Integration + submit | E2E flow, demo, submit to Colosseum |
 
 ---
 
-## Colosseum Submission Requirements
+## Colosseum Status
 
 - [x] Registered agent (ID: 815, name: proof-of-hack)
-- [ ] Claim code given to human for X verification
-- [ ] Public GitHub repository
+- [x] Claim code given to human (claimed)
+- [x] Public GitHub repository (github.com/estentz/proof-of-hack)
+- [x] Project draft on Colosseum (ID: 402)
+- [x] First forum post (ID: 1907)
+- [x] AgentWallet configured (EhuJYNANCy9yUEcx19MYP9GpPJLZ4orSkK6wJHLQL1D5)
 - [ ] Solana integration description (max 1,000 chars)
-- [ ] Tags: security, ai (1-3 tags)
-- [ ] Demo or video (strongly recommended)
-- [ ] Final submission via API (one-way lock)
+- [ ] Tags: security, ai
+- [ ] Demo or video
+- [ ] Final submission via API
 
 ---
 
@@ -201,47 +228,36 @@ Bounty:      [b"bounty", hacker_pubkey, target_program, nonce]
 
 | Dependency | Purpose | Status |
 |------------|---------|--------|
-| Rust 1.93.0 | Anchor program compilation | Installed (WSL) |
-| Solana CLI 3.0.15 | Deploy, test, keygen | Installed (WSL) |
-| Anchor CLI | Program framework | Installing (WSL) |
-| @coral-xyz/anchor (npm) | TypeScript client | Pending |
+| Rust 1.93.0 | Program compilation | Installed (WSL) |
+| Solana CLI 3.0.15 | Deploy, keygen | Installed (WSL) |
+| Anchor CLI 0.32.1 | Program framework | Installing (WSL) |
+| @coral-xyz/anchor | TypeScript client | Pending |
 | @solana/web3.js | Solana interactions | Pending |
-| @solana/wallet-adapter | Wallet connection | Pending |
-| Next.js | Web frontend | Pending |
-| tweetnacl | Encryption (NaCl box) | Pending |
-| AgentWallet | Hackathon wallet ops | Pending OTP |
+| @solana/wallet-adapter-* | Wallet connection | Pending |
+| Next.js 14 | Web frontend | Pending |
+| tweetnacl | NaCl box encryption | Pending |
 | GitHub CLI 2.86.0 | Repo management | Installed |
-
----
-
-## Marketing Strategy (Separate from Code)
-
-**Directory:** `c:\Users\esten\proof-of-hack\marketing\`
-
-- **Forum posts:** Progress updates on Colosseum forum (every 1-2 days)
-- **Agent engagement:** Chat with basedmereum and other agents
-- **Heartbeat:** Sync every 30 min during active dev
-- **Demo video:** Screen recording of full disclosure flow
-- **Twitter/X:** Posts about development progress (pending API access)
 
 ---
 
 ## Security Considerations
 
-- All encryption happens client-side (never send plaintext to any server)
-- No API keys in frontend code
-- CSP headers on web app
+- All encryption client-side (never send plaintext to any server)
+- No API keys in frontend
+- CSP headers, no external scripts
 - Program authority checks on every instruction
-- Grace period before reveal to prevent premature disclosure
-- Rate limiting on disclosure submissions (prevent spam)
+- Grace period before reveal prevents premature disclosure
+- proof_hash verification on reveal prevents forged proofs
+- Account size caps prevent DOS (1024 byte encrypted_proof limit)
+- Nonce prevents PDA collisions for multiple disclosures
 
 ---
 
 ## Success Metrics
 
-- Complete disclosure flow works on devnet: register → submit → acknowledge → resolve
-- Reveal flow works: submit → grace period → reveal
-- Bounty flow works: post bounty → protocol registers → claims disclosure
-- Demo video shows full flow in < 3 minutes
+- Complete flow on devnet: register → submit → acknowledge → resolve
+- Reveal flow: submit → grace period passes → reveal (hash verified)
+- Unregistered flow: submit (hash only) → protocol registers → claim → encrypt
+- Demo video < 3 minutes
 - Submitted to Colosseum before deadline
-- At least 3 forum posts with engagement
+- 3+ forum posts with engagement
