@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+target/
+
+# Environment
+.env
+.env.local
+
+# Build artifacts
+dist/
+.next/
+out/
+
+# Solana
+test-ledger/
+*.so
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Anchor
+.anchor/
+
+# Marketing (separate from code)
+marketing/drafts/
