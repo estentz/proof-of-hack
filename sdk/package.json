@@ -1,0 +1,24 @@
+{
+  "name": "@proof-of-hack/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for Proof of Hack — verifiable white hat disclosure registry on Solana",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/web3.js": "^1.95.0",
+    "tweetnacl": "^1.0.3",
+    "tweetnacl-util": "^0.15.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  },
+  "files": [
+    "dist",
+    "src"
+  ]
+}
