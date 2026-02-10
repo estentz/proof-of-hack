@@ -1,7 +1,7 @@
 {
   "name": "Proof of Hack",
-  "version": "1.1.0",
-  "description": "Trustless responsible disclosure with on-chain proof, accountability, and bounty escrow on Solana. White hats hash exploit proof, protocols verify privately, both sides get cryptographic accountability. Bounty vaults enable automatic SOL payouts on resolution.",
+  "version": "2.0.0",
+  "description": "Trustless responsible disclosure with on-chain proof, accountability, and bounty escrow on Solana. White hats hash exploit proof, protocols verify privately, both sides get cryptographic accountability. Security-audited with 12 hardening fixes applied.",
   "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn",
   "network": "devnet",
   "repo": "https://github.com/estentz/proof-of-hack",
@@ -9,24 +9,25 @@
   "instructions": [
     {
       "name": "register_protocol",
-      "description": "Register a program to receive encrypted vulnerability disclosures",
+      "description": "Register a program to receive encrypted vulnerability disclosures. Signer must be the upgrade authority of the target program (verified via BPF Upgradeable Loader).",
       "signer": "protocol_authority",
       "params": [
         { "name": "program_address", "type": "PublicKey", "description": "Solana program to protect" },
-        { "name": "name", "type": "String", "description": "Protocol name (1-64 chars)" },
-        { "name": "encryption_key", "type": "[u8; 32]", "description": "X25519 public key" }
+        { "name": "name", "type": "String", "description": "Protocol name (1-64 printable ASCII chars)" },
+        { "name": "encryption_key", "type": "[u8; 32]", "description": "X25519 public key for encrypted disclosures" }
       ],
       "pda": { "seeds": ["protocol", "program_address"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
     },
     {
       "name": "submit_disclosure",
-      "description": "Submit a vulnerability disclosure with SHA-256 proof commitment. Optionally enforces protocol's min_grace_period if ProtocolConfig is passed via remaining_accounts.",
+      "description": "Submit a vulnerability disclosure with SHA-256 proof commitment. Enforces protocol's min_grace_period if ProtocolConfig exists (pass via remaining_accounts). Target must be an executable program.",
       "signer": "hacker",
       "params": [
         { "name": "proof_hash", "type": "[u8; 32]", "description": "SHA-256 hash of proof" },
-        { "name": "encrypted_proof", "type": "Vec<u8>", "description": "NaCl encrypted proof (max 1024 bytes)" },
+        { "name": "encrypted_proof", "type": "Vec<u8>", "description": "NaCl encrypted proof (48-1024 bytes, or empty)" },
+        { "name": "sender_encryption_key", "type": "[u8; 32]", "description": "Hacker's X25519 public key for NaCl box decryption" },
         { "name": "severity", "type": "u8", "description": "1=Low, 2=Medium, 3=High, 4=Critical" },
-        { "name": "grace_period", "type": "i64", "description": "Seconds before reveal allowed (min 60)" },
+        { "name": "grace_period", "type": "i64", "description": "Seconds before reveal allowed (min 60, max 1 year)" },
         { "name": "nonce", "type": "u64", "description": "Unique per hacker+program pair" }
       ],
       "pda": { "seeds": ["disclosure", "hacker", "target_program", "nonce_le_bytes"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
@@ -39,16 +40,17 @@
     },
     {
       "name": "resolve_disclosure",
-      "description": "Protocol marks vulnerability as resolved with payment proof",
+      "description": "Protocol marks vulnerability as resolved with payment proof and resolution type",
       "signer": "protocol_authority",
       "params": [
-        { "name": "payment_hash", "type": "[u8; 32]", "description": "SHA-256 hash of payment proof" }
+        { "name": "payment_hash", "type": "[u8; 32]", "description": "SHA-256 hash of payment proof (tx hash, receipt, etc.)" },
+        { "name": "resolution_type", "type": "u8", "description": "1=Off-chain attestation, 2=On-chain bounty, 3=No payment" }
       ],
       "constraint": "status == ACKNOWLEDGED (1)"
     },
     {
       "name": "reveal_proof",
-      "description": "Hacker reveals proof publicly after grace period (nuclear option)",
+      "description": "Hacker reveals proof publicly after grace period. Allowed even after resolution by design — the hacker always retains the right to publish.",
       "signer": "hacker",
       "params": [
         { "name": "plaintext_proof", "type": "Vec<u8>", "description": "Original proof (max 1024 bytes)" }
@@ -57,73 +59,124 @@
     },
     {
       "name": "claim_disclosure",
-      "description": "Protocol claims unclaimed disclosure after late registration",
+      "description": "Protocol claims unclaimed disclosure (submitted before protocol registered)",
       "signer": "protocol_authority",
       "constraint": "target_program matches, protocol field is default"
     },
     {
       "name": "create_bounty",
-      "description": "Create a bounty vault for a protocol and deposit initial SOL",
+      "description": "Create a bounty vault for a protocol with per-severity rates and optional initial deposit",
       "signer": "protocol_authority",
       "params": [
         { "name": "low_bounty", "type": "u64", "description": "Bounty rate for Low severity (lamports)" },
         { "name": "medium_bounty", "type": "u64", "description": "Bounty rate for Medium severity (lamports)" },
         { "name": "high_bounty", "type": "u64", "description": "Bounty rate for High severity (lamports)" },
         { "name": "critical_bounty", "type": "u64", "description": "Bounty rate for Critical severity (lamports)" },
-        { "name": "deposit", "type": "u64", "description": "Initial SOL deposit (lamports)" }
+        { "name": "deposit", "type": "u64", "description": "Initial SOL deposit (lamports, 0 allowed)" }
       ],
       "pda": { "seeds": ["vault", "protocol_pda"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
     },
     {
       "name": "fund_bounty",
-      "description": "Add more SOL to an existing bounty vault",
+      "description": "Add more SOL to an existing active bounty vault",
       "signer": "protocol_authority",
       "params": [
         { "name": "amount", "type": "u64", "description": "Additional SOL to deposit (lamports)" }
-      ]
+      ],
+      "constraint": "vault must be active"
     },
     {
       "name": "claim_bounty",
-      "description": "Hacker claims SOL bounty after disclosure is resolved. Creates a receipt PDA to prevent double-claims.",
+      "description": "Hacker claims SOL bounty after disclosure is resolved. Creates receipt PDA to prevent double-claims. Auto-sets resolution_type to ONCHAIN_BOUNTY.",
       "signer": "hacker",
       "constraint": "status == RESOLVED (2), hacker matches disclosure.hacker",
       "pda": { "seeds": ["bounty_claim", "disclosure_pda"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
     },
     {
-      "name": "set_protocol_config",
-      "description": "Set or update protocol configuration (e.g., min_grace_period). Uses init_if_needed.",
+      "name": "deactivate_bounty",
+      "description": "Deactivate a bounty vault (required before withdrawal)",
+      "signer": "protocol_authority",
+      "constraint": "vault must be active"
+    },
+    {
+      "name": "withdraw_bounty",
+      "description": "Withdraw SOL from a deactivated bounty vault",
       "signer": "protocol_authority",
       "params": [
-        { "name": "min_grace_period", "type": "i64", "description": "Minimum grace period in seconds that submitters must respect" }
+        { "name": "amount", "type": "u64", "description": "Lamports to withdraw" }
+      ],
+      "constraint": "vault must be deactivated"
+    },
+    {
+      "name": "create_protocol_config",
+      "description": "Create protocol configuration (min grace period). One-time init.",
+      "signer": "protocol_authority",
+      "params": [
+        { "name": "min_grace_period", "type": "i64", "description": "Minimum grace period in seconds (0 = use global 60s minimum)" }
       ],
       "pda": { "seeds": ["protocol_config", "protocol_pda"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
+    },
+    {
+      "name": "update_protocol_config",
+      "description": "Update existing protocol configuration",
+      "signer": "protocol_authority",
+      "params": [
+        { "name": "min_grace_period", "type": "i64", "description": "Updated minimum grace period in seconds" }
+      ]
+    },
+    {
+      "name": "transfer_authority",
+      "description": "Propose authority transfer to a new wallet (step 1 of 2). New authority must call accept_authority to finalize.",
+      "signer": "current_authority",
+      "accounts": [
+        { "name": "new_authority", "description": "Proposed new authority wallet (not zero address)" }
+      ]
+    },
+    {
+      "name": "accept_authority",
+      "description": "Accept a pending authority transfer (step 2 of 2). Must be signed by the proposed new authority.",
+      "signer": "new_authority",
+      "constraint": "protocol.pending_authority == signer"
+    },
+    {
+      "name": "update_encryption_key",
+      "description": "Rotate the protocol's X25519 encryption key without re-registering",
+      "signer": "protocol_authority",
+      "params": [
+        { "name": "new_key", "type": "[u8; 32]", "description": "New X25519 public key" }
+      ]
     }
   ],
   "accounts": {
     "Protocol": {
       "description": "Registered protocol that can receive disclosures",
       "seeds": ["protocol", "program_address"],
-      "fields": ["authority", "program_address", "name", "encryption_key", "registered_at", "bump"]
+      "fields": ["authority", "program_address", "name", "encryption_key", "registered_at", "pending_authority", "bump"],
+      "size": 213
     },
     "Disclosure": {
       "description": "Vulnerability disclosure with proof commitment",
       "seeds": ["disclosure", "hacker", "target_program", "nonce"],
-      "fields": ["hacker", "protocol", "target_program", "proof_hash", "encrypted_proof", "severity", "status", "submitted_at", "acknowledged_at", "resolved_at", "grace_period", "nonce", "payment_hash", "plaintext_proof", "bump"]
+      "fields": ["hacker", "protocol", "target_program", "proof_hash", "encrypted_proof", "sender_encryption_key", "severity", "status", "resolution_type", "payment_hash", "submitted_at", "acknowledged_at", "resolved_at", "grace_period", "nonce", "bump"],
+      "size": 1272
     },
     "BountyVault": {
       "description": "SOL escrow vault for automatic bounty payouts",
       "seeds": ["vault", "protocol_pda"],
-      "fields": ["protocol", "authority", "low_bounty", "medium_bounty", "high_bounty", "critical_bounty", "total_deposited", "total_paid", "active", "created_at", "bump"]
+      "fields": ["protocol", "low_bounty", "medium_bounty", "high_bounty", "critical_bounty", "total_deposited", "total_paid", "active", "created_at", "bump"],
+      "size": 98
     },
     "BountyClaim": {
       "description": "Receipt PDA preventing double-claims",
       "seeds": ["bounty_claim", "disclosure_pda"],
-      "fields": ["bump"]
+      "fields": ["bump"],
+      "size": 9
     },
     "ProtocolConfig": {
       "description": "Optional protocol configuration (min_grace_period, etc.)",
       "seeds": ["protocol_config", "protocol_pda"],
-      "fields": ["protocol", "authority", "min_grace_period", "bump"]
+      "fields": ["protocol", "min_grace_period", "bump"],
+      "size": 49
     }
   },
   "statusCodes": {
@@ -138,9 +191,18 @@
     "3": "HIGH",
     "4": "CRITICAL"
   },
+  "resolutionTypeCodes": {
+    "0": "NONE",
+    "1": "OFFCHAIN_ATTESTATION",
+    "2": "ONCHAIN_BOUNTY",
+    "3": "NO_PAYMENT"
+  },
   "encryption": {
     "algorithm": "NaCl box (X25519-XSalsa20-Poly1305)",
-    "format": "[24-byte nonce][32-byte sender pubkey][ciphertext]",
+    "format": "[24-byte nonce][ciphertext+auth_tag]",
+    "senderKeyField": "sender_encryption_key (on Disclosure account)",
+    "minSize": 48,
+    "maxSize": 1024,
     "clientSideOnly": true
   },
   "api": {
@@ -169,5 +231,20 @@
       "path": "/api/register",
       "description": "Build an unsigned register_protocol transaction for agents (3-line integration)"
     }
+  },
+  "security": {
+    "audit": "White-hat adversarial audit with 12 hardening fixes applied",
+    "findings_addressed": [
+      "Resolution type honesty (WH-001)",
+      "Grace period bypass prevention (WH-002)",
+      "init-if-needed removal (WH-003)",
+      "Stale authority elimination (WH-004)",
+      "Executable target enforcement (WH-005)",
+      "Minimum ciphertext size (WH-006)",
+      "Zero-deposit warnings (WH-008)",
+      "Deactivated vault guards (WH-009/010)",
+      "Two-step authority transfer (WH-011)",
+      "Encryption key rotation (WH-014)"
+    ]
   }
 }
