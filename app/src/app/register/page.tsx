@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { AnchorProvider } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { getProgram, findProtocolPda } from "@/lib/program";
+import { getProgram, getReadonlyProgram, findProtocolPda } from "@/lib/program";
 import nacl from "tweetnacl";
 
 interface ProtocolEntry {
@@ -20,21 +20,23 @@ function RegisteredProtocols() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/protocols")
-      .then((r) => r.json())
-      .then((data) => {
+    async function load() {
+      try {
+        const program = getReadonlyProgram();
+        const all = await (program.account as any).protocol.all();
         setProtocols(
-          (data.protocols || []).map((p: any) => ({
-            pda: p.pda,
-            name: p.name,
-            programAddress: p.programAddress,
-            authority: p.authority,
-            registeredAt: p.registeredAt,
+          all.map((p: any) => ({
+            pda: p.publicKey.toBase58(),
+            name: p.account.name,
+            programAddress: p.account.programAddress.toBase58(),
+            authority: p.account.authority.toBase58(),
+            registeredAt: p.account.registeredAt.toNumber(),
           }))
         );
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      } catch {}
+      setLoading(false);
+    }
+    load();
   }, []);
 
   if (loading) return <p className="text-gray-400 text-sm">Loading registered protocols...</p>;

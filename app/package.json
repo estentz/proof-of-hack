@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "build:ipfs": "node scripts/build-ipfs.mjs"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.32.1",

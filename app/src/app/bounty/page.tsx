@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { AnchorProvider, BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { getProgram } from "@/lib/program";
+import { getProgram, getReadonlyProgram, getConnection } from "@/lib/program";
 
 interface VaultInfo {
   pda: string;
@@ -44,24 +44,48 @@ function AllVaults() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/vaults")
-      .then((r) => r.json())
-      .then((data) => {
-        setVaults(
-          (data.vaults || []).map((v: any) => ({
-            vaultPda: v.pda,
-            protocolName: v.protocolName || "Unknown",
-            programAddress: v.programAddress || v.pda,
-            rates: v.rates || { low: 0, medium: 0, high: 0, critical: 0 },
-            balance: v.balance || 0,
-            totalDeposited: v.totalDeposited || 0,
-            totalPaid: v.totalPaid || 0,
-            active: v.active ?? true,
-          }))
+    async function load() {
+      try {
+        const program = getReadonlyProgram();
+        const connection = getConnection();
+        const [allVaults, allProtocols] = await Promise.all([
+          (program.account as any).bountyVault.all(),
+          (program.account as any).protocol.all(),
+        ]);
+
+        const protocolMap = new Map<string, any>();
+        for (const p of allProtocols) {
+          protocolMap.set(p.publicKey.toBase58(), p.account);
+        }
+
+        const balances = await Promise.all(
+          allVaults.map((v: any) => connection.getBalance(v.publicKey))
         );
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+
+        setVaults(
+          allVaults.map((v: any, i: number) => {
+            const prot = protocolMap.get(v.account.protocol.toBase58());
+            return {
+              vaultPda: v.publicKey.toBase58(),
+              protocolName: prot?.name || "Unknown",
+              programAddress: prot?.programAddress?.toBase58() || v.publicKey.toBase58(),
+              rates: {
+                low: v.account.lowBounty.toNumber(),
+                medium: v.account.mediumBounty.toNumber(),
+                high: v.account.highBounty.toNumber(),
+                critical: v.account.criticalBounty.toNumber(),
+              },
+              balance: balances[i],
+              totalDeposited: v.account.totalDeposited.toNumber(),
+              totalPaid: v.account.totalPaid.toNumber(),
+              active: v.account.active,
+            };
+          })
+        );
+      } catch {}
+      setLoading(false);
+    }
+    load();
   }, []);
 
   if (loading) return <p className="text-gray-400 text-sm">Loading bounty vaults...</p>;

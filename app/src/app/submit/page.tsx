@@ -4,10 +4,11 @@ import { useState, useEffect, useMemo } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { AnchorProvider, BN } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { getProgram, findDisclosurePda, findProtocolPda } from "@/lib/program";
+import { getProgram, getReadonlyProgram, findDisclosurePda, findProtocolPda } from "@/lib/program";
 import {
   SEVERITY_LABELS,
   SEVERITY_COLORS,
+  STATUS_LABELS,
   STATUS_COLORS,
   parseAnchorError,
 } from "@/lib/constants";
@@ -28,26 +29,25 @@ function RecentDisclosures() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/disclosures")
-      .then((r) => r.json())
-      .then((data) => {
-        const sorted = [...(data.disclosures || [])]
-          .sort((a: any, b: any) => b.submittedAt - a.submittedAt)
-          .slice(0, 10);
-        setDisclosures(
-          sorted.map((d: any) => ({
-            pda: d.pda,
-            severity: d.severity,
-            severityLabel: d.severityLabel,
-            status: d.status,
-            statusLabel: d.statusLabel,
-            targetProgram: d.targetProgram,
-            submittedAt: d.submittedAt,
-          }))
-        );
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    async function load() {
+      try {
+        const program = getReadonlyProgram();
+        const all = await (program.account as any).disclosure.all();
+        const mapped = all.map((d: any) => ({
+          pda: d.publicKey.toBase58(),
+          severity: d.account.severity,
+          severityLabel: SEVERITY_LABELS[d.account.severity] || "Unknown",
+          status: d.account.status,
+          statusLabel: STATUS_LABELS[d.account.status] || "Unknown",
+          targetProgram: d.account.targetProgram.toBase58(),
+          submittedAt: d.account.submittedAt.toNumber(),
+        }));
+        const sorted = mapped.sort((a: any, b: any) => b.submittedAt - a.submittedAt).slice(0, 10);
+        setDisclosures(sorted);
+      } catch {}
+      setLoading(false);
+    }
+    load();
   }, []);
 
   if (loading) return <p className="text-gray-400 text-sm">Loading recent disclosures...</p>;

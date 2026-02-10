@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { AnchorProvider } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
-import { getProgram } from "@/lib/program";
+import { getProgram, getReadonlyProgram } from "@/lib/program";
 import { PROGRAM_ID, parseAnchorError } from "@/lib/constants";
 import {
   SEVERITY_LABELS,
@@ -53,12 +53,11 @@ function PublicDashboard() {
   useEffect(() => {
     async function fetchStats() {
       try {
-        const [protRes, discRes] = await Promise.all([
-          fetch("/api/protocols"),
-          fetch("/api/disclosures"),
+        const program = getReadonlyProgram();
+        const [allProtocols, allDisclosures] = await Promise.all([
+          (program.account as any).protocol.all(),
+          (program.account as any).disclosure.all(),
         ]);
-        const protocols = await protRes.json();
-        const disclosures = await discRes.json();
 
         const byStatus: Record<string, number> = {
           Submitted: 0,
@@ -73,29 +72,29 @@ function PublicDashboard() {
           Critical: 0,
         };
 
-        for (const d of disclosures.disclosures || []) {
+        const mapped = allDisclosures.map((d: any) => ({
+          pda: d.publicKey.toBase58(),
+          severity: d.account.severity,
+          severityLabel: SEVERITY_LABELS[d.account.severity] || "Unknown",
+          status: d.account.status,
+          statusLabel: STATUS_LABELS[d.account.status] || "Unknown",
+          targetProgram: d.account.targetProgram.toBase58(),
+          submittedAt: d.account.submittedAt.toNumber(),
+        }));
+
+        for (const d of mapped) {
           if (d.statusLabel) byStatus[d.statusLabel] = (byStatus[d.statusLabel] || 0) + 1;
           if (d.severityLabel) bySeverity[d.severityLabel] = (bySeverity[d.severityLabel] || 0) + 1;
         }
 
-        const sorted = [...(disclosures.disclosures || [])].sort(
-          (a: any, b: any) => b.submittedAt - a.submittedAt
-        );
+        const sorted = [...mapped].sort((a, b) => b.submittedAt - a.submittedAt);
 
         setStats({
-          protocolCount: protocols.count || 0,
-          disclosureCount: disclosures.count || 0,
+          protocolCount: allProtocols.length,
+          disclosureCount: allDisclosures.length,
           byStatus,
           bySeverity,
-          recentDisclosures: sorted.slice(0, 5).map((d: any) => ({
-            pda: d.pda,
-            severity: d.severity,
-            severityLabel: d.severityLabel,
-            status: d.status,
-            statusLabel: d.statusLabel,
-            targetProgram: d.targetProgram,
-            submittedAt: d.submittedAt,
-          })),
+          recentDisclosures: sorted.slice(0, 5),
         });
       } catch (err) {
         console.error("Failed to load public stats:", err);
@@ -317,7 +316,7 @@ export default function DashboardPage() {
       const program = getProgram(provider);
 
       await program.methods
-        .resolveDisclosure(paymentHash)
+        .resolveDisclosure(paymentHash, 1)
         .accounts({
           disclosure: new PublicKey(disclosure.publicKey),
           protocol: new PublicKey(disclosure.protocol),
