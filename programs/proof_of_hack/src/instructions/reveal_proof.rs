@@ -11,7 +11,8 @@ pub struct RevealProof<'info> {
         mut,
         constraint = disclosure.hacker == hacker.key() @ ProofOfHackError::UnauthorizedHackerAction,
         constraint = (disclosure.status == disclosure_status::SUBMITTED
-            || disclosure.status == disclosure_status::ACKNOWLEDGED)
+            || disclosure.status == disclosure_status::ACKNOWLEDGED
+            || disclosure.status == disclosure_status::RESOLVED)
             @ ProofOfHackError::InvalidStatus,
     )]
     pub disclosure: Account<'info, Disclosure>,

@@ -38,6 +38,94 @@
       "args": []
     },
     {
+      "name": "claim_bounty",
+      "docs": [
+        "Hacker claims bounty after disclosure is resolved."
+      ],
+      "discriminator": [
+        225,
+        157,
+        163,
+        238,
+        239,
+        169,
+        75,
+        226
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "protocol"
+              }
+            ]
+          }
+        },
+        {
+          "name": "bounty_claim",
+          "docs": [
+            "Receipt PDA — if init succeeds, bounty was not yet claimed"
+          ],
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  98,
+                  111,
+                  117,
+                  110,
+                  116,
+                  121,
+                  95,
+                  99,
+                  108,
+                  97,
+                  105,
+                  109
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "disclosure"
+              }
+            ]
+          }
+        },
+        {
+          "name": "disclosure"
+        },
+        {
+          "name": "protocol"
+        },
+        {
+          "name": "hacker",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
       "name": "claim_disclosure",
       "docs": [
         "Protocol claims an existing disclosure after registering."
@@ -66,6 +154,138 @@
         }
       ],
       "args": []
+    },
+    {
+      "name": "create_bounty",
+      "docs": [
+        "Create a bounty vault for a protocol with per-severity rates."
+      ],
+      "discriminator": [
+        122,
+        90,
+        14,
+        143,
+        8,
+        125,
+        200,
+        2
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "protocol"
+              }
+            ]
+          }
+        },
+        {
+          "name": "protocol"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "low",
+          "type": "u64"
+        },
+        {
+          "name": "medium",
+          "type": "u64"
+        },
+        {
+          "name": "high",
+          "type": "u64"
+        },
+        {
+          "name": "critical",
+          "type": "u64"
+        },
+        {
+          "name": "deposit",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "fund_bounty",
+      "docs": [
+        "Fund an existing bounty vault with additional SOL."
+      ],
+      "discriminator": [
+        36,
+        148,
+        139,
+        239,
+        172,
+        37,
+        58,
+        255
+      ],
+      "accounts": [
+        {
+          "name": "vault",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  118,
+                  97,
+                  117,
+                  108,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "protocol"
+              }
+            ]
+          }
+        },
+        {
+          "name": "protocol"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
     },
     {
       "name": "register_protocol",
@@ -212,6 +432,78 @@
       ]
     },
     {
+      "name": "set_protocol_config",
+      "docs": [
+        "Set protocol configuration (min grace period, etc.).",
+        "Only the protocol authority can call this."
+      ],
+      "discriminator": [
+        203,
+        186,
+        218,
+        225,
+        142,
+        27,
+        24,
+        108
+      ],
+      "accounts": [
+        {
+          "name": "config",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  111,
+                  116,
+                  111,
+                  99,
+                  111,
+                  108,
+                  95,
+                  99,
+                  111,
+                  110,
+                  102,
+                  105,
+                  103
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "protocol"
+              }
+            ]
+          }
+        },
+        {
+          "name": "protocol"
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true,
+          "relations": [
+            "protocol"
+          ]
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "min_grace_period",
+          "type": "i64"
+        }
+      ]
+    },
+    {
       "name": "submit_disclosure",
       "docs": [
         "Submit a vulnerability disclosure with proof hash and optional encrypted proof."
@@ -315,6 +607,32 @@
   ],
   "accounts": [
     {
+      "name": "BountyClaim",
+      "discriminator": [
+        130,
+        113,
+        6,
+        57,
+        79,
+        54,
+        78,
+        205
+      ]
+    },
+    {
+      "name": "BountyVault",
+      "discriminator": [
+        76,
+        109,
+        75,
+        2,
+        194,
+        210,
+        53,
+        5
+      ]
+    },
+    {
       "name": "Disclosure",
       "discriminator": [
         29,
@@ -338,6 +656,19 @@
         72,
         131,
         40
+      ]
+    },
+    {
+      "name": "ProtocolConfig",
+      "discriminator": [
+        207,
+        91,
+        250,
+        28,
+        152,
+        179,
+        215,
+        209
       ]
     }
   ],
@@ -411,9 +742,155 @@
       "code": 6013,
       "name": "GracePeriodOverflow",
       "msg": "Grace period calculation overflow"
+    },
+    {
+      "code": 6014,
+      "name": "VaultNotActive",
+      "msg": "Bounty vault is not active"
+    },
+    {
+      "code": 6015,
+      "name": "InsufficientVaultFunds",
+      "msg": "Insufficient funds in bounty vault"
+    },
+    {
+      "code": 6016,
+      "name": "BountyAlreadyClaimed",
+      "msg": "Bounty has already been claimed for this disclosure"
+    },
+    {
+      "code": 6017,
+      "name": "DisclosureNotResolved",
+      "msg": "Disclosure has not been resolved yet"
+    },
+    {
+      "code": 6018,
+      "name": "BountyOverflow",
+      "msg": "Arithmetic overflow in bounty calculation"
+    },
+    {
+      "code": 6019,
+      "name": "UnauthorizedVaultAction",
+      "msg": "Only the protocol authority can manage the bounty vault"
+    },
+    {
+      "code": 6020,
+      "name": "GracePeriodBelowProtocolMinimum",
+      "msg": "Grace period is below the protocol's configured minimum"
+    },
+    {
+      "code": 6021,
+      "name": "InvalidMinGracePeriod",
+      "msg": "Minimum grace period must be between 0 and 1 year"
     }
   ],
   "types": [
+    {
+      "name": "BountyClaim",
+      "docs": [
+        "Receipt proving a bounty was claimed (prevents double-claim)"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "BountyVault",
+      "docs": [
+        "Bounty vault — holds SOL for automatic payouts per severity"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "protocol",
+            "docs": [
+              "Linked protocol PDA"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Protocol authority (cached to avoid extra account load)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "low_bounty",
+            "docs": [
+              "Lamports paid for Low severity disclosures"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "medium_bounty",
+            "docs": [
+              "Lamports paid for Medium severity disclosures"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "high_bounty",
+            "docs": [
+              "Lamports paid for High severity disclosures"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "critical_bounty",
+            "docs": [
+              "Lamports paid for Critical severity disclosures"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_deposited",
+            "docs": [
+              "Total SOL deposited into vault"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "total_paid",
+            "docs": [
+              "Total SOL paid out to hackers"
+            ],
+            "type": "u64"
+          },
+          {
+            "name": "active",
+            "docs": [
+              "Whether this vault is accepting claims"
+            ],
+            "type": "bool"
+          },
+          {
+            "name": "created_at",
+            "docs": [
+              "When the vault was created"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
     {
       "name": "Disclosure",
       "docs": [
@@ -578,6 +1055,48 @@
             "name": "registered_at",
             "docs": [
               "When the protocol was registered"
+            ],
+            "type": "i64"
+          },
+          {
+            "name": "bump",
+            "docs": [
+              "PDA bump"
+            ],
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ProtocolConfig",
+      "docs": [
+        "Protocol configuration — optional settings set by protocol authority.",
+        "Separate account to avoid breaking existing Protocol accounts.",
+        "PDA seeds: [b\"protocol_config\", protocol_pda]"
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "protocol",
+            "docs": [
+              "The protocol PDA this config belongs to"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "authority",
+            "docs": [
+              "Protocol authority (must match protocol.authority)"
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "min_grace_period",
+            "docs": [
+              "Minimum grace period in seconds that hackers must set.",
+              "0 = use global minimum (60 seconds)."
             ],
             "type": "i64"
           },

@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { Connection, Keypair } from "@solana/web3.js";
-import { AnchorProvider, Program, Wallet } from "@coral-xyz/anchor";
+import { AnchorProvider, Program } from "@coral-xyz/anchor";
 import idl from "@/lib/idl.json";
 import { RPC_ENDPOINT } from "@/lib/constants";
 
+export const dynamic = "force-dynamic";
+
 function getReadonlyProgram() {
   const connection = new Connection(RPC_ENDPOINT, "confirmed");
-  const dummyWallet = new Wallet(Keypair.generate());
-  const provider = new AnchorProvider(connection, dummyWallet, {
+  const kp = Keypair.generate();
+  const dummyWallet = { publicKey: kp.publicKey, signTransaction: async (tx: any) => tx, signAllTransactions: async (txs: any) => txs };
+  const provider = new AnchorProvider(connection, dummyWallet as any, {
     commitment: "confirmed",
   });
   return new Program(idl as any, provider);

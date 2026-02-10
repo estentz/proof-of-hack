@@ -43,4 +43,61 @@ pub enum ProofOfHackError {
 
     #[msg("Grace period calculation overflow")]
     GracePeriodOverflow,
+
+    #[msg("Bounty vault is not active")]
+    VaultNotActive,
+
+    #[msg("Insufficient funds in bounty vault")]
+    InsufficientVaultFunds,
+
+    #[msg("Bounty has already been claimed for this disclosure")]
+    BountyAlreadyClaimed,
+
+    #[msg("Disclosure has not been resolved yet")]
+    DisclosureNotResolved,
+
+    #[msg("Arithmetic overflow in bounty calculation")]
+    BountyOverflow,
+
+    #[msg("Only the protocol authority can manage the bounty vault")]
+    UnauthorizedVaultAction,
+
+    #[msg("Grace period is below the protocol's configured minimum")]
+    GracePeriodBelowProtocolMinimum,
+
+    #[msg("Minimum grace period must be between 0 and 1 year")]
+    InvalidMinGracePeriod,
+
+    #[msg("Signer is not the upgrade authority of the target program")]
+    NotUpgradeAuthority,
+
+    #[msg("Target program data account is invalid")]
+    InvalidProgramData,
+
+    #[msg("Protocol config PDA must be provided when targeting a registered protocol")]
+    ProtocolConfigRequired,
+
+    #[msg("Invalid protocol config PDA")]
+    InvalidProtocolConfig,
+
+    #[msg("Bounty vault is already inactive")]
+    VaultAlreadyInactive,
+
+    #[msg("New authority cannot be the zero address")]
+    InvalidNewAuthority,
+
+    #[msg("Invalid resolution type")]
+    InvalidResolutionType,
+
+    #[msg("Target must be a deployed, executable program")]
+    InvalidTargetProgram,
+
+    #[msg("Encrypted proof is too small to contain valid NaCl box ciphertext")]
+    EncryptedProofTooSmall,
+
+    #[msg("Bounty vault must be deactivated before withdrawal")]
+    VaultStillActive,
+
+    #[msg("No pending authority transfer to accept")]
+    NoPendingTransfer,
 }

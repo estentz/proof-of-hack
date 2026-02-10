@@ -29,3 +29,33 @@ export function findDisclosurePda(
     programId
   );
 }
+
+export function findVaultPda(
+  protocolPda: PublicKey,
+  programId: PublicKey = PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("vault"), protocolPda.toBuffer()],
+    programId
+  );
+}
+
+export function findBountyClaimPda(
+  disclosurePda: PublicKey,
+  programId: PublicKey = PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("bounty_claim"), disclosurePda.toBuffer()],
+    programId
+  );
+}
+
+export function findProtocolConfigPda(
+  protocolPda: PublicKey,
+  programId: PublicKey = PROGRAM_ID
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("protocol_config"), protocolPda.toBuffer()],
+    programId
+  );
+}

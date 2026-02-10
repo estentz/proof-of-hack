@@ -1,5 +1,5 @@
 export { ProofOfHack } from "./client";
-export { findProtocolPda, findDisclosurePda } from "./pda";
+export { findProtocolPda, findDisclosurePda, findVaultPda, findBountyClaimPda, findProtocolConfigPda } from "./pda";
 export {
   hashProof,
   encryptProof,
@@ -12,4 +12,4 @@ export {
   MIN_GRACE_PERIOD,
   DEFAULT_GRACE_PERIOD,
 } from "./constants";
-export type { ProtocolAccount, DisclosureAccount } from "./types";
+export type { ProtocolAccount, DisclosureAccount, BountyVaultAccount } from "./types";

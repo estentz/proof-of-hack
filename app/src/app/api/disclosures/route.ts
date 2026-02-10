@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Connection, Keypair, PublicKey } from "@solana/web3.js";
-import { AnchorProvider, Program, Wallet } from "@coral-xyz/anchor";
+import { Connection, Keypair } from "@solana/web3.js";
+import { AnchorProvider, Program } from "@coral-xyz/anchor";
 import idl from "@/lib/idl.json";
 import { RPC_ENDPOINT } from "@/lib/constants";
 
 function getReadonlyProgram() {
   const connection = new Connection(RPC_ENDPOINT, "confirmed");
-  // Dummy wallet for read-only operations — never signs transactions
-  const dummyWallet = new Wallet(Keypair.generate());
-  const provider = new AnchorProvider(connection, dummyWallet, {
+  const kp = Keypair.generate();
+  const dummyWallet = { publicKey: kp.publicKey, signTransaction: async (tx: any) => tx, signAllTransactions: async (txs: any) => txs };
+  const provider = new AnchorProvider(connection, dummyWallet as any, {
     commitment: "confirmed",
   });
   return new Program(idl as any, provider);

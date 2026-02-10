@@ -1,7 +1,7 @@
 {
   "name": "Proof of Hack",
-  "version": "1.0.0",
-  "description": "Trustless responsible disclosure with on-chain proof and accountability on Solana. White hats hash exploit proof, protocols verify privately, both sides get cryptographic accountability.",
+  "version": "1.1.0",
+  "description": "Trustless responsible disclosure with on-chain proof, accountability, and bounty escrow on Solana. White hats hash exploit proof, protocols verify privately, both sides get cryptographic accountability. Bounty vaults enable automatic SOL payouts on resolution.",
   "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn",
   "network": "devnet",
   "repo": "https://github.com/estentz/proof-of-hack",
@@ -20,7 +20,7 @@
     },
     {
       "name": "submit_disclosure",
-      "description": "Submit a vulnerability disclosure with SHA-256 proof commitment",
+      "description": "Submit a vulnerability disclosure with SHA-256 proof commitment. Optionally enforces protocol's min_grace_period if ProtocolConfig is passed via remaining_accounts.",
       "signer": "hacker",
       "params": [
         { "name": "proof_hash", "type": "[u8; 32]", "description": "SHA-256 hash of proof" },
@@ -60,8 +60,72 @@
       "description": "Protocol claims unclaimed disclosure after late registration",
       "signer": "protocol_authority",
       "constraint": "target_program matches, protocol field is default"
+    },
+    {
+      "name": "create_bounty",
+      "description": "Create a bounty vault for a protocol and deposit initial SOL",
+      "signer": "protocol_authority",
+      "params": [
+        { "name": "low_bounty", "type": "u64", "description": "Bounty rate for Low severity (lamports)" },
+        { "name": "medium_bounty", "type": "u64", "description": "Bounty rate for Medium severity (lamports)" },
+        { "name": "high_bounty", "type": "u64", "description": "Bounty rate for High severity (lamports)" },
+        { "name": "critical_bounty", "type": "u64", "description": "Bounty rate for Critical severity (lamports)" },
+        { "name": "deposit", "type": "u64", "description": "Initial SOL deposit (lamports)" }
+      ],
+      "pda": { "seeds": ["vault", "protocol_pda"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
+    },
+    {
+      "name": "fund_bounty",
+      "description": "Add more SOL to an existing bounty vault",
+      "signer": "protocol_authority",
+      "params": [
+        { "name": "amount", "type": "u64", "description": "Additional SOL to deposit (lamports)" }
+      ]
+    },
+    {
+      "name": "claim_bounty",
+      "description": "Hacker claims SOL bounty after disclosure is resolved. Creates a receipt PDA to prevent double-claims.",
+      "signer": "hacker",
+      "constraint": "status == RESOLVED (2), hacker matches disclosure.hacker",
+      "pda": { "seeds": ["bounty_claim", "disclosure_pda"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
+    },
+    {
+      "name": "set_protocol_config",
+      "description": "Set or update protocol configuration (e.g., min_grace_period). Uses init_if_needed.",
+      "signer": "protocol_authority",
+      "params": [
+        { "name": "min_grace_period", "type": "i64", "description": "Minimum grace period in seconds that submitters must respect" }
+      ],
+      "pda": { "seeds": ["protocol_config", "protocol_pda"], "programId": "4uYHTyZzVZjzJh4Dvh8R1hE779SxPbZj7ZMTTHAWTQAn" }
     }
   ],
+  "accounts": {
+    "Protocol": {
+      "description": "Registered protocol that can receive disclosures",
+      "seeds": ["protocol", "program_address"],
+      "fields": ["authority", "program_address", "name", "encryption_key", "registered_at", "bump"]
+    },
+    "Disclosure": {
+      "description": "Vulnerability disclosure with proof commitment",
+      "seeds": ["disclosure", "hacker", "target_program", "nonce"],
+      "fields": ["hacker", "protocol", "target_program", "proof_hash", "encrypted_proof", "severity", "status", "submitted_at", "acknowledged_at", "resolved_at", "grace_period", "nonce", "payment_hash", "plaintext_proof", "bump"]
+    },
+    "BountyVault": {
+      "description": "SOL escrow vault for automatic bounty payouts",
+      "seeds": ["vault", "protocol_pda"],
+      "fields": ["protocol", "authority", "low_bounty", "medium_bounty", "high_bounty", "critical_bounty", "total_deposited", "total_paid", "active", "created_at", "bump"]
+    },
+    "BountyClaim": {
+      "description": "Receipt PDA preventing double-claims",
+      "seeds": ["bounty_claim", "disclosure_pda"],
+      "fields": ["bump"]
+    },
+    "ProtocolConfig": {
+      "description": "Optional protocol configuration (min_grace_period, etc.)",
+      "seeds": ["protocol_config", "protocol_pda"],
+      "fields": ["protocol", "authority", "min_grace_period", "bump"]
+    }
+  },
   "statusCodes": {
     "0": "SUBMITTED",
     "1": "ACKNOWLEDGED",
@@ -80,7 +144,30 @@
     "clientSideOnly": true
   },
   "api": {
-    "disclosures": "GET /api/disclosures",
-    "protocols": "GET /api/protocols"
+    "protocols": {
+      "method": "GET",
+      "path": "/api/protocols",
+      "description": "List all registered protocols"
+    },
+    "disclosures": {
+      "method": "GET",
+      "path": "/api/disclosures",
+      "description": "List disclosures with optional filters (?hacker=&protocol=&status=&target=)"
+    },
+    "vaults": {
+      "method": "GET",
+      "path": "/api/vaults",
+      "description": "List all bounty vaults with rates and balances"
+    },
+    "protocolStatus": {
+      "method": "GET",
+      "path": "/api/protocols/{programId}/status",
+      "description": "Full status of a specific program: protocol, config, vault, disclosures"
+    },
+    "register": {
+      "method": "POST",
+      "path": "/api/register",
+      "description": "Build an unsigned register_protocol transaction for agents (3-line integration)"
+    }
   }
 }

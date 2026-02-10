@@ -1,11 +1,72 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { AnchorProvider } from "@coral-xyz/anchor";
 import { PublicKey, SystemProgram } from "@solana/web3.js";
 import { getProgram, findProtocolPda } from "@/lib/program";
 import nacl from "tweetnacl";
+
+interface ProtocolEntry {
+  pda: string;
+  name: string;
+  programAddress: string;
+  authority: string;
+  registeredAt: number;
+}
+
+function RegisteredProtocols() {
+  const [protocols, setProtocols] = useState<ProtocolEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/protocols")
+      .then((r) => r.json())
+      .then((data) => {
+        setProtocols(
+          (data.protocols || []).map((p: any) => ({
+            pda: p.pda,
+            name: p.name,
+            programAddress: p.programAddress,
+            authority: p.authority,
+            registeredAt: p.registeredAt,
+          }))
+        );
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <p className="text-gray-400 text-sm">Loading registered protocols...</p>;
+
+  return (
+    <div className="mt-8">
+      <h2 className="text-lg font-semibold mb-3">Registered Protocols ({protocols.length})</h2>
+      {protocols.length === 0 ? (
+        <p className="text-gray-500 text-sm">No protocols registered yet. Be the first!</p>
+      ) : (
+        <div className="space-y-2">
+          {protocols.map((p) => (
+            <div
+              key={p.pda}
+              className="bg-gray-900 border border-gray-800 rounded-lg p-3 flex items-center justify-between"
+            >
+              <div>
+                <p className="text-white font-medium">{p.name}</p>
+                <p className="text-xs text-gray-500 font-mono">
+                  {p.programAddress.slice(0, 8)}...{p.programAddress.slice(-8)}
+                </p>
+              </div>
+              <span className="text-xs text-gray-500">
+                {new Date(p.registeredAt * 1000).toLocaleDateString()}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function RegisterPage() {
   const { publicKey, signTransaction, signAllTransactions } = useWallet();
@@ -154,6 +215,8 @@ export default function RegisterPage() {
           </div>
         )}
       </div>
+
+      <RegisteredProtocols />
     </div>
   );
 }

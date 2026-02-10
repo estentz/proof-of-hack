@@ -26,3 +26,17 @@ export interface DisclosureAccount {
   nonce: BN;
   bump: number;
 }
+
+export interface BountyVaultAccount {
+  protocol: PublicKey;
+  authority: PublicKey;
+  lowBounty: BN;
+  mediumBounty: BN;
+  highBounty: BN;
+  criticalBounty: BN;
+  totalDeposited: BN;
+  totalPaid: BN;
+  active: boolean;
+  createdAt: BN;
+  bump: number;
+}

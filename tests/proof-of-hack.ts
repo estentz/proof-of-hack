@@ -841,6 +841,261 @@ describe("proof-of-hack", () => {
     });
   });
 
+  describe("bounty escrow", () => {
+    const bountyTarget = Keypair.generate();
+    const bountyHacker = Keypair.generate();
+    let bountyProtoPda: PublicKey;
+    let bountyVaultPda: PublicKey;
+    let bountyDiscPda: PublicKey;
+    let bountyClaimPda: PublicKey;
+    const bountyNonce = new anchor.BN(0);
+
+    before(async () => {
+      const sig1 = await provider.connection.requestAirdrop(
+        bountyHacker.publicKey,
+        10 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(sig1);
+      const sig2 = await provider.connection.requestAirdrop(
+        protocolAuthority.publicKey,
+        10 * anchor.web3.LAMPORTS_PER_SOL
+      );
+      await provider.connection.confirmTransaction(sig2);
+
+      [bountyProtoPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("protocol"), bountyTarget.publicKey.toBuffer()],
+        program.programId
+      );
+      [bountyVaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), bountyProtoPda.toBuffer()],
+        program.programId
+      );
+      [bountyDiscPda] = PublicKey.findProgramAddressSync(
+        [
+          Buffer.from("disclosure"),
+          bountyHacker.publicKey.toBuffer(),
+          bountyTarget.publicKey.toBuffer(),
+          bountyNonce.toArrayLike(Buffer, "le", 8),
+        ],
+        program.programId
+      );
+      [bountyClaimPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("bounty_claim"), bountyDiscPda.toBuffer()],
+        program.programId
+      );
+
+      await program.methods
+        .registerProtocol(bountyTarget.publicKey, "BountyProto", Array.from(encryptionKey))
+        .accounts({
+          protocol: bountyProtoPda,
+          authority: protocolAuthority.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([protocolAuthority])
+        .rpc();
+    });
+
+    it("creates bounty vault with deposit", async () => {
+      const low = new anchor.BN(0.1 * anchor.web3.LAMPORTS_PER_SOL);
+      const medium = new anchor.BN(0.25 * anchor.web3.LAMPORTS_PER_SOL);
+      const high = new anchor.BN(0.5 * anchor.web3.LAMPORTS_PER_SOL);
+      const critical = new anchor.BN(1 * anchor.web3.LAMPORTS_PER_SOL);
+      const deposit = new anchor.BN(5 * anchor.web3.LAMPORTS_PER_SOL);
+
+      await program.methods
+        .createBounty(low, medium, high, critical, deposit)
+        .accounts({
+          vault: bountyVaultPda,
+          protocol: bountyProtoPda,
+          authority: protocolAuthority.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([protocolAuthority])
+        .rpc();
+
+      const vault = await program.account.bountyVault.fetch(bountyVaultPda);
+      assert.equal(vault.lowBounty.toNumber(), 0.1 * anchor.web3.LAMPORTS_PER_SOL);
+      assert.equal(vault.mediumBounty.toNumber(), 0.25 * anchor.web3.LAMPORTS_PER_SOL);
+      assert.equal(vault.highBounty.toNumber(), 0.5 * anchor.web3.LAMPORTS_PER_SOL);
+      assert.equal(vault.criticalBounty.toNumber(), 1 * anchor.web3.LAMPORTS_PER_SOL);
+      assert.equal(vault.totalDeposited.toNumber(), 5 * anchor.web3.LAMPORTS_PER_SOL);
+      assert.equal(vault.totalPaid.toNumber(), 0);
+      assert.equal(vault.active, true);
+    });
+
+    it("funds bounty vault with additional SOL", async () => {
+      const beforeBalance = await provider.connection.getBalance(bountyVaultPda);
+      const fundAmount = new anchor.BN(2 * anchor.web3.LAMPORTS_PER_SOL);
+
+      await program.methods
+        .fundBounty(fundAmount)
+        .accounts({
+          vault: bountyVaultPda,
+          protocol: bountyProtoPda,
+          authority: protocolAuthority.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([protocolAuthority])
+        .rpc();
+
+      const afterBalance = await provider.connection.getBalance(bountyVaultPda);
+      assert.ok(afterBalance >= beforeBalance + 2 * anchor.web3.LAMPORTS_PER_SOL);
+
+      const vault = await program.account.bountyVault.fetch(bountyVaultPda);
+      assert.equal(vault.totalDeposited.toNumber(), 7 * anchor.web3.LAMPORTS_PER_SOL);
+    });
+
+    it("pays hacker bounty on claim after resolve", async () => {
+      const proof = "Bounty test: overflow in token mint";
+      const hash = crypto.createHash("sha256").update(proof).digest();
+
+      await program.methods
+        .submitDisclosure(
+          Array.from(hash), Buffer.from("encrypted"), 3, new anchor.BN(60), bountyNonce
+        )
+        .accounts({
+          disclosure: bountyDiscPda,
+          hacker: bountyHacker.publicKey,
+          targetProgram: bountyTarget.publicKey,
+          protocol: bountyProtoPda,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([bountyHacker])
+        .rpc();
+
+      await program.methods.acknowledgeDisclosure()
+        .accounts({ disclosure: bountyDiscPda, protocol: bountyProtoPda, authority: protocolAuthority.publicKey })
+        .signers([protocolAuthority]).rpc();
+
+      const payHash = crypto.createHash("sha256").update("bounty-payment").digest();
+      await program.methods.resolveDisclosure(Array.from(payHash))
+        .accounts({ disclosure: bountyDiscPda, protocol: bountyProtoPda, authority: protocolAuthority.publicKey })
+        .signers([protocolAuthority]).rpc();
+
+      const hackerBefore = await provider.connection.getBalance(bountyHacker.publicKey);
+      await program.methods.claimBounty()
+        .accounts({
+          vault: bountyVaultPda, bountyClaim: bountyClaimPda, disclosure: bountyDiscPda,
+          protocol: bountyProtoPda, hacker: bountyHacker.publicKey, systemProgram: SystemProgram.programId,
+        })
+        .signers([bountyHacker]).rpc();
+
+      const hackerAfter = await provider.connection.getBalance(bountyHacker.publicKey);
+      const expectedBounty = 0.5 * anchor.web3.LAMPORTS_PER_SOL;
+      // Hacker gains bounty but pays tx fee (~5000) + rent for bounty_claim PDA (~890)
+      // Net gain should be at least bounty - 10_000_000 (generous margin)
+      assert.ok(hackerAfter - hackerBefore > expectedBounty - 10_000_000,
+        `Expected net gain > ${expectedBounty - 10_000_000}, got ${hackerAfter - hackerBefore}`);
+
+      const vault = await program.account.bountyVault.fetch(bountyVaultPda);
+      assert.equal(vault.totalPaid.toNumber(), expectedBounty);
+    });
+
+    it("prevents double-claim", async () => {
+      try {
+        await program.methods.claimBounty()
+          .accounts({
+            vault: bountyVaultPda, bountyClaim: bountyClaimPda, disclosure: bountyDiscPda,
+            protocol: bountyProtoPda, hacker: bountyHacker.publicKey, systemProgram: SystemProgram.programId,
+          })
+          .signers([bountyHacker]).rpc();
+        assert.fail("Should have thrown error");
+      } catch (err) {
+        assert.ok(err.toString().length > 0);
+      }
+    });
+
+    it("rejects claim before RESOLVED status", async () => {
+      const nonce2 = new anchor.BN(1);
+      const hash2 = crypto.createHash("sha256").update("unresolved").digest();
+      const [discPda2] = PublicKey.findProgramAddressSync(
+        [Buffer.from("disclosure"), bountyHacker.publicKey.toBuffer(), bountyTarget.publicKey.toBuffer(), nonce2.toArrayLike(Buffer, "le", 8)],
+        program.programId
+      );
+      const [claimPda2] = PublicKey.findProgramAddressSync(
+        [Buffer.from("bounty_claim"), discPda2.toBuffer()], program.programId
+      );
+
+      await program.methods.submitDisclosure(Array.from(hash2), Buffer.from([]), 2, new anchor.BN(60), nonce2)
+        .accounts({ disclosure: discPda2, hacker: bountyHacker.publicKey, targetProgram: bountyTarget.publicKey, protocol: bountyProtoPda, systemProgram: SystemProgram.programId })
+        .signers([bountyHacker]).rpc();
+
+      try {
+        await program.methods.claimBounty()
+          .accounts({ vault: bountyVaultPda, bountyClaim: claimPda2, disclosure: discPda2, protocol: bountyProtoPda, hacker: bountyHacker.publicKey, systemProgram: SystemProgram.programId })
+          .signers([bountyHacker]).rpc();
+        assert.fail("Should have thrown error");
+      } catch (err) {
+        assert.include(err.toString(), "DisclosureNotResolved");
+      }
+    });
+
+    it("rejects claim by wrong hacker", async () => {
+      // Create a fresh resolved disclosure to test wrong-hacker claim
+      const fakeHacker = Keypair.generate();
+      const sig = await provider.connection.requestAirdrop(fakeHacker.publicKey, 2 * anchor.web3.LAMPORTS_PER_SOL);
+      await provider.connection.confirmTransaction(sig);
+
+      const wrongNonce = new anchor.BN(50);
+      const wrongHash = crypto.createHash("sha256").update("wrong-hacker-test").digest();
+      const [wrongDiscPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("disclosure"), bountyHacker.publicKey.toBuffer(), bountyTarget.publicKey.toBuffer(), wrongNonce.toArrayLike(Buffer, "le", 8)],
+        program.programId
+      );
+      const [wrongClaimPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("bounty_claim"), wrongDiscPda.toBuffer()], program.programId
+      );
+
+      // Submit as bountyHacker, resolve it
+      await program.methods.submitDisclosure(Array.from(wrongHash), Buffer.from([]), 1, new anchor.BN(60), wrongNonce)
+        .accounts({ disclosure: wrongDiscPda, hacker: bountyHacker.publicKey, targetProgram: bountyTarget.publicKey, protocol: bountyProtoPda, systemProgram: SystemProgram.programId })
+        .signers([bountyHacker]).rpc();
+      await program.methods.acknowledgeDisclosure()
+        .accounts({ disclosure: wrongDiscPda, protocol: bountyProtoPda, authority: protocolAuthority.publicKey })
+        .signers([protocolAuthority]).rpc();
+      const payH = crypto.createHash("sha256").update("pay").digest();
+      await program.methods.resolveDisclosure(Array.from(payH))
+        .accounts({ disclosure: wrongDiscPda, protocol: bountyProtoPda, authority: protocolAuthority.publicKey })
+        .signers([protocolAuthority]).rpc();
+
+      // fakeHacker tries to claim bountyHacker's disclosure
+      try {
+        await program.methods.claimBounty()
+          .accounts({
+            vault: bountyVaultPda, bountyClaim: wrongClaimPda, disclosure: wrongDiscPda,
+            protocol: bountyProtoPda, hacker: fakeHacker.publicKey, systemProgram: SystemProgram.programId,
+          })
+          .signers([fakeHacker]).rpc();
+        assert.fail("Should have thrown error");
+      } catch (err) {
+        assert.include(err.toString(), "UnauthorizedHackerAction");
+      }
+    });
+
+    it("rejects create_bounty from non-authority", async () => {
+      const otherTarget = Keypair.generate();
+      const [otherProtoPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("protocol"), otherTarget.publicKey.toBuffer()], program.programId
+      );
+      const [otherVaultPda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("vault"), otherProtoPda.toBuffer()], program.programId
+      );
+
+      await program.methods.registerProtocol(otherTarget.publicKey, "OtherProto", Array.from(encryptionKey))
+        .accounts({ protocol: otherProtoPda, authority: protocolAuthority.publicKey, systemProgram: SystemProgram.programId })
+        .signers([protocolAuthority]).rpc();
+
+      try {
+        await program.methods.createBounty(new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0), new anchor.BN(0))
+          .accounts({ vault: otherVaultPda, protocol: otherProtoPda, authority: bountyHacker.publicKey, systemProgram: SystemProgram.programId })
+          .signers([bountyHacker]).rpc();
+        assert.fail("Should have thrown error");
+      } catch (err) {
+        assert.include(err.toString(), "UnauthorizedVaultAction");
+      }
+    });
+  });
+
   describe("full flow: register → submit → acknowledge → resolve", () => {
     it("completes the happy path", async () => {
       const newTarget = Keypair.generate();

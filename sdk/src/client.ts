@@ -7,7 +7,7 @@ import {
   SystemProgram,
   TransactionSignature,
 } from "@solana/web3.js";
-import { findProtocolPda, findDisclosurePda } from "./pda";
+import { findProtocolPda, findDisclosurePda, findVaultPda, findBountyClaimPda, findProtocolConfigPda } from "./pda";
 import { hashProof, encryptProof } from "./crypto";
 import {
   PROGRAM_ID,
@@ -17,7 +17,7 @@ import {
   MAX_ENCRYPTED_PROOF,
   MAX_PROTOCOL_NAME,
 } from "./constants";
-import type { ProtocolAccount, DisclosureAccount } from "./types";
+import type { ProtocolAccount, DisclosureAccount, BountyVaultAccount } from "./types";
 
 // IDL for the Proof of Hack program
 import idl from "./idl.json";
@@ -259,5 +259,126 @@ export class ProofOfHack {
     { publicKey: PublicKey; account: ProtocolAccount }[]
   > {
     return (this.program.account as any).protocol.all();
+  }
+
+  // ========== Bounty Escrow Methods ==========
+
+  /**
+   * Create a bounty vault for a protocol with severity-based payout rates.
+   */
+  async createBounty(
+    protocolPda: PublicKey,
+    rates: { low: BN; medium: BN; high: BN; critical: BN },
+    depositLamports: BN
+  ): Promise<{ tx: TransactionSignature; vaultPda: PublicKey }> {
+    const [vaultPda] = findVaultPda(protocolPda, this.program.programId);
+
+    const tx = await this.program.methods
+      .createBounty(rates.low, rates.medium, rates.high, rates.critical, depositLamports)
+      .accounts({
+        vault: vaultPda,
+        protocol: protocolPda,
+        authority: this.provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    return { tx, vaultPda };
+  }
+
+  /**
+   * Fund an existing bounty vault with additional lamports.
+   */
+  async fundBounty(
+    protocolPda: PublicKey,
+    amountLamports: BN
+  ): Promise<TransactionSignature> {
+    const [vaultPda] = findVaultPda(protocolPda, this.program.programId);
+
+    return this.program.methods
+      .fundBounty(amountLamports)
+      .accounts({
+        vault: vaultPda,
+        protocol: protocolPda,
+        authority: this.provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  /**
+   * Claim a bounty payout for a resolved disclosure (hacker only).
+   */
+  async claimBounty(
+    disclosurePda: PublicKey,
+    protocolPda: PublicKey
+  ): Promise<TransactionSignature> {
+    const [vaultPda] = findVaultPda(protocolPda, this.program.programId);
+    const [bountyClaimPda] = findBountyClaimPda(disclosurePda, this.program.programId);
+
+    return this.program.methods
+      .claimBounty()
+      .accounts({
+        bountyClaim: bountyClaimPda,
+        vault: vaultPda,
+        disclosure: disclosurePda,
+        protocol: protocolPda,
+        hacker: this.provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+  }
+
+  /**
+   * Fetch a bounty vault account.
+   */
+  async getVault(vaultPda: PublicKey): Promise<BountyVaultAccount> {
+    return (this.program.account as any).bountyVault.fetch(vaultPda);
+  }
+
+  /**
+   * Find the vault PDA for a given protocol PDA.
+   */
+  findVaultPda(protocolPda: PublicKey): [PublicKey, number] {
+    return findVaultPda(protocolPda, this.program.programId);
+  }
+
+  /**
+   * Find the bounty claim PDA for a given disclosure PDA.
+   */
+  findBountyClaimPda(disclosurePda: PublicKey): [PublicKey, number] {
+    return findBountyClaimPda(disclosurePda, this.program.programId);
+  }
+
+  // ========== Protocol Config Methods ==========
+
+  /**
+   * Set protocol configuration (min grace period).
+   * Only the protocol authority can call this.
+   */
+  async setProtocolConfig(
+    protocolPda: PublicKey,
+    minGracePeriod: number
+  ): Promise<{ tx: TransactionSignature; configPda: PublicKey }> {
+    const [configPda] = findProtocolConfigPda(protocolPda, this.program.programId);
+
+    const tx = await this.program.methods
+      .setProtocolConfig(new BN(minGracePeriod))
+      .accounts({
+        config: configPda,
+        protocol: protocolPda,
+        authority: this.provider.wallet.publicKey,
+        systemProgram: SystemProgram.programId,
+      })
+      .rpc();
+
+    return { tx, configPda };
+  }
+
+  /**
+   * Find the protocol config PDA for a given protocol PDA.
+   */
+  findProtocolConfigPda(protocolPda: PublicKey): [PublicKey, number] {
+    return findProtocolConfigPda(protocolPda, this.program.programId);
   }
 }
