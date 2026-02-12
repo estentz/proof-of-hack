@@ -1,0 +1,31 @@
+{
+  "name": "@proof-of-hack/mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Proof of Hack — trustless responsible disclosure on Solana. Agents can query protocols, disclosures, bounty vaults, and build unsigned transactions.",
+  "main": "dist/index.js",
+  "bin": {
+    "proof-of-hack-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "npx tsx src/index.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@coral-xyz/anchor": "^0.32.1",
+    "@solana/web3.js": "^1.95.0",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0",
+    "tsx": "^4.7.0",
+    "@types/node": "^20"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "keywords": ["solana", "mcp", "security", "disclosure", "bounty", "white-hat"],
+  "license": "MIT"
+}
